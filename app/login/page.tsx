@@ -6,22 +6,22 @@ import { Ship, Lock, User } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 const LoginPage = () => {
-  const [loginId, setLoginId] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const { login } = useAuth();
   const router = useRouter();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    const success = login(loginId, password);
+    const success = await login(email, password);
 
     if (success) {
-      router.push("/dashboard"); 
+      router.push("/dashboard");
     } else {
-      setError("Invalid Login ID or Password");
+      setError("Invalid email or password");
     }
   };
 
@@ -44,16 +44,16 @@ const LoginPage = () => {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Login ID
+                Email
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
-                  type="text"
+                  type="email"
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                  placeholder="Enter Login ID"
-                  value={loginId}
-                  onChange={(e) => setLoginId(e.target.value)}
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
             </div>

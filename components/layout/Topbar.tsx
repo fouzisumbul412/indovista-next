@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { User, LogOut, ChevronDown, Menu } from "lucide-react";
+import { User, LogOut, ChevronDown } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const Topbar = () => {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef(null);
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -37,8 +37,12 @@ const Topbar = () => {
           className="flex items-center gap-2 cursor-pointer"
         >
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-medium text-gray-900">Alex Morgan</p>
-            <p className="text-xs text-gray-500">Logistics Mgr.</p>
+            <p className="text-sm font-medium text-gray-900">
+              {user?.name || "User"}
+            </p>
+            <p className="text-xs text-gray-500">
+              {user?.role || "Authenticated"}
+            </p>
           </div>
 
           <div className="w-9 h-9 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">

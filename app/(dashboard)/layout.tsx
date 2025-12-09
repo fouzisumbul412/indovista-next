@@ -11,14 +11,14 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isAuthenticated) router.replace("/login");
-  }, [isAuthenticated]);
+    if (!loading && !isAuthenticated) router.replace("/login");
+  }, [isAuthenticated, loading]);
 
-  if (!isAuthenticated) return null; // prevent flashing
+  if (loading || !isAuthenticated) return null; // prevent flashing
 
   return (
     <div className="min-h-screen bg-gray-50">

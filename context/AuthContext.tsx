@@ -1,18 +1,20 @@
 
 "use client";
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from "react";
 
 interface User {
-  id: string;
+  id: number;
   name: string;
   role: string;
+  email: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (id: string, pass: string) => boolean;
+  login: (identifier: string, pass: string) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
+  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -23,33 +25,57 @@ interface AuthProviderProps {
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Check local storage on mount
   useEffect(() => {
-    const stored = localStorage.getItem('indovista_user');
-    if (stored) {
-      setUser(JSON.parse(stored));
+    const loadUser = async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data.user);
+        } else {
+          setUser(null);
+        }
+      } catch {
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadUser();
+  }, []);
+
+  const login = useCallback(async (identifier: string, pass: string) => {
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: identifier, password: pass }),
+      });
+
+      if (!res.ok) return false;
+
+      const data = await res.json();
+      setUser(data.user);
+      return true;
+    } catch {
+      return false;
     }
   }, []);
 
-  const login = (id: string, pass: string) => {
-    // Simple auth for demo
-    if (id === 'Admin' && pass === 'P@55w0rd') {
-      const u = { id: 'admin', name: 'Admin User', role: 'Administrator' };
-      setUser(u);
-      localStorage.setItem('indovista_user', JSON.stringify(u));
-      return true;
+  const logout = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      setUser(null);
     }
-    return false;
-  };
-
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('indovista_user');
-  };
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider
+      value={{ user, login, logout, isAuthenticated: !!user, loading }}
+    >
       {children}
     </AuthContext.Provider>
   );
