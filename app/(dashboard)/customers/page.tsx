@@ -1,39 +1,39 @@
-// app/(dashboard)/customers/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/Card";
 import { Search, Plus, CheckCircle, XCircle, Download } from "lucide-react";
 import { AddCustomerModal } from "@/components/AddCustomerModal";
 import { Customer } from "@/types";
 
+const fetchCustomers = async (): Promise<Customer[]> => {
+  const res = await fetch("/api/customers", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch customers");
+  return res.json();
+};
+
 const CustomerList = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const fetchCustomers = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("/api/customers");
-      if (!res.ok) throw new Error("Failed to fetch customers");
-      const data = (await res.json()) as Customer[];
-      setCustomers(data);
-    } catch (err) {
-      console.error("Error fetching customers", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
+  const {
+    data: customers = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery<Customer[]>({
+    queryKey: ["customers"],
+    queryFn: fetchCustomers,
+  });
 
-  const handleAddCustomer = () => {
-    fetchCustomers();
+  // called after modal creates a customer
+  const handleAdded = () => {
+    queryClient.invalidateQueries({ queryKey: ["customers"] });
+    setIsModalOpen(false);
   };
 
   const formatCurrency = (amount: number, currency: string) =>
@@ -67,15 +67,17 @@ const CustomerList = () => {
     }
   };
 
-  const filtered = customers.filter((c) => {
+  const filtered = useMemo(() => {
     const term = searchTerm.toLowerCase();
-    return (
-      c.companyName.toLowerCase().includes(term) ||
-      c.country.toLowerCase().includes(term) ||
-      c.customerCode.toLowerCase().includes(term) ||
-      (c.contactPerson || "").toLowerCase().includes(term)
-    );
-  });
+    return customers.filter((c) => {
+      return (
+        c.companyName.toLowerCase().includes(term) ||
+        c.country.toLowerCase().includes(term) ||
+        c.customerCode.toLowerCase().includes(term) ||
+        (c.contactPerson || "").toLowerCase().includes(term)
+      );
+    });
+  }, [customers, searchTerm]);
 
   return (
     <div className="space-y-6">
@@ -94,9 +96,9 @@ const CustomerList = () => {
             onClick={() => {
               window.location.href = "/api/customers/export";
             }}
-            className="px-3 py-2 border bg-green-600 text-white border-gray-300 rounded-lg text-sm hover:bg-green-500"
-          > 
-          <Download className="w-4 h-4 mr-2" />
+            className="flex items-center px-3 py-2 border bg-green-600 text-white border-gray-300 rounded-lg text-sm hover:bg-green-500"
+          >
+            <Download className="w-4 h-4 mr-2" />
             Export
           </button>
 
@@ -124,13 +126,23 @@ const CustomerList = () => {
           />
         </div>
 
-        {loading ? (
+        {/* Loading */}
+        {isLoading && (
           <div className="text-center text-gray-500 py-12">
             Loading customers...
           </div>
-        ) : (
+        )}
+
+        {/* Error */}
+        {!isLoading && isError && (
+          <div className="text-center text-red-600 py-12">
+            {(error as any)?.message || "Failed to load customers"}
+          </div>
+        )}
+
+        {/* Content */}
+        {!isLoading && !isError && (
           <>
-            {/* Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {filtered.map((customer) => (
                 <Link
@@ -157,6 +169,7 @@ const CustomerList = () => {
                           </p>
                         )}
                       </div>
+
                       <div className="flex flex-col items-end gap-1">
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-100 bg-blue-50 text-blue-600 uppercase">
                           {customer.currency}
@@ -178,6 +191,7 @@ const CustomerList = () => {
                           {customer.contactPerson || "—"}
                         </span>
                       </div>
+
                       <div className="flex justify-between items-baseline">
                         <span className="text-sm text-gray-500">
                           Credit Limit
@@ -189,6 +203,7 @@ const CustomerList = () => {
                           )}
                         </span>
                       </div>
+
                       <div className="flex justify-between items-baseline">
                         <span className="text-sm text-gray-500">
                           Used Credits
@@ -200,6 +215,7 @@ const CustomerList = () => {
                           )}
                         </span>
                       </div>
+
                       <div className="flex justify-between items-baseline">
                         <span className="text-sm text-gray-500">
                           Total Amount
@@ -211,6 +227,7 @@ const CustomerList = () => {
                           )}
                         </span>
                       </div>
+
                       <div className="flex justify-between items-baseline">
                         <span className="text-sm text-gray-500">
                           Payment Terms
@@ -236,6 +253,7 @@ const CustomerList = () => {
                         )}
                         KYC
                       </div>
+
                       <div
                         className={`flex items-center gap-1.5 text-xs font-medium ${
                           customer.sanctionsCheck
@@ -256,7 +274,7 @@ const CustomerList = () => {
               ))}
             </div>
 
-            {filtered.length === 0 && !loading && (
+            {filtered.length === 0 && (
               <div className="text-center py-12 text-gray-500">
                 No customers found matching your search.
               </div>
@@ -268,7 +286,7 @@ const CustomerList = () => {
       <AddCustomerModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onAdd={handleAddCustomer}
+        onAdd={handleAdded}
       />
     </div>
   );

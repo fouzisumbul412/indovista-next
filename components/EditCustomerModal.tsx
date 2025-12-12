@@ -1,7 +1,7 @@
-// components/EditCustomerModal.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { X, Users } from "lucide-react";
 import { Customer, CustomerStatus, CustomerType } from "@/types";
 
@@ -31,46 +31,36 @@ interface FormState {
   sanctionsCheck: boolean;
 }
 
-export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
-  isOpen,
+const toFormState = (customer: Customer): FormState => ({
+  companyName: customer.companyName ?? "",
+  type: customer.type,
+  contactPerson: customer.contactPerson ?? "",
+  phone: customer.phone ?? "",
+  email: customer.email ?? "",
+  address: customer.address ?? "",
+  city: customer.city ?? "",
+  country: customer.country ?? "",
+  currency: customer.currency ?? "INR",
+  creditLimit: (customer.creditLimit ?? 0).toString(),
+  usedCredits: (customer.usedCredits ?? 0).toString(),
+  totalAmount: (customer.totalAmount ?? 0).toString(),
+  paymentTerms: customer.paymentTerms ?? "",
+  status: customer.status,
+  kycStatus: customer.kycStatus,
+  sanctionsCheck: customer.sanctionsCheck,
+});
+
+const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
   onClose,
   customer,
   onUpdated,
 }) => {
-  const [formData, setFormData] = useState<FormState | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const queryClient = useQueryClient();
+  const [formData, setFormData] = useState<FormState>(() => toFormState(customer!));
 
-  useEffect(() => {
-    if (isOpen && customer) {
-      setFormData({
-        companyName: customer.companyName ?? "",
-        type: customer.type,
-        contactPerson: customer.contactPerson ?? "",
-        phone: customer.phone ?? "",
-        email: customer.email ?? "",
-        address: customer.address ?? "",
-        city: customer.city ?? "",
-        country: customer.country ?? "",
-        currency: customer.currency ?? "INR",
-        creditLimit: (customer.creditLimit ?? 0).toString(),
-        usedCredits: (customer.usedCredits ?? 0).toString(),
-        totalAmount: (customer.totalAmount ?? 0).toString(),
-        paymentTerms: customer.paymentTerms ?? "",
-        status: customer.status,
-        kycStatus: customer.kycStatus,
-        sanctionsCheck: customer.sanctionsCheck,
-      });
-    }
-  }, [isOpen, customer]);
-
-  if (!isOpen || !customer || !formData) return null;
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-
-    try {
-      const res = await fetch(`/api/customers/${customer.customerCode}`, {
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/customers/${customer!.customerCode}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -82,17 +72,26 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
       });
 
       if (!res.ok) {
-        throw new Error("Failed to update customer");
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message || "Failed to update customer");
       }
 
-      const updated = (await res.json()) as Customer;
+      return (await res.json()) as Customer;
+    },
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["customer", customer!.customerCode] });
       onUpdated(updated);
-    } catch (err) {
-      console.error("Error updating customer", err);
-      alert("Failed to update customer.");
-    } finally {
-      setSubmitting(false);
-    }
+    },
+    onError: (err: any) => {
+      console.error(err);
+      alert(err?.message || "Failed to update customer.");
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateMutation.mutate();
   };
 
   return (
@@ -106,9 +105,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900">Edit Customer</h2>
-              <p className="text-sm text-gray-500">
-                Update partner profile details
-              </p>
+              <p className="text-sm text-gray-500">Update partner profile details</p>
             </div>
           </div>
           <button
@@ -121,10 +118,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
         </div>
 
         {/* Form */}
-        <form
-          onSubmit={handleSubmit}
-          className="p-6 space-y-4 overflow-y-auto"
-        >
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
           {/* Company Name */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -135,27 +129,18 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
               type="text"
               className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               value={formData.companyName}
-              onChange={(e) =>
-                setFormData({ ...formData, companyName: e.target.value })
-              }
+              onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
             />
           </div>
 
           {/* Type + Contact Person */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Type
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Type</label>
               <select
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.type}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    type: e.target.value as CustomerType,
-                  })
-                }
+                onChange={(e) => setFormData({ ...formData, type: e.target.value as CustomerType })}
               >
                 <option value="Distributor">Distributor</option>
                 <option value="Importer">Importer</option>
@@ -171,12 +156,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                 type="text"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.contactPerson}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    contactPerson: e.target.value,
-                  })
-                }
+                onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
               />
             </div>
           </div>
@@ -184,62 +164,46 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
           {/* Phone + Email */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Phone
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Phone</label>
               <input
                 type="text"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, phone: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Email *
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Email *</label>
               <input
                 required
                 type="email"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               />
             </div>
           </div>
 
           {/* Address */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Address
-            </label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Address</label>
             <input
               type="text"
               className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               value={formData.address}
-              onChange={(e) =>
-                setFormData({ ...formData, address: e.target.value })
-              }
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
             />
           </div>
 
           {/* City + Country */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                City
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">City</label>
               <input
                 type="text"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.city}
-                onChange={(e) =>
-                  setFormData({ ...formData, city: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
               />
             </div>
             <div>
@@ -251,9 +215,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                 type="text"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.country}
-                onChange={(e) =>
-                  setFormData({ ...formData, country: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, country: e.target.value })}
               />
             </div>
           </div>
@@ -261,15 +223,11 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
           {/* Currency + Credit Limit + Terms */}
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Currency
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Currency</label>
               <select
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.currency}
-                onChange={(e) =>
-                  setFormData({ ...formData, currency: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
               >
                 <option value="INR">INR</option>
                 <option value="USD">USD</option>
@@ -279,28 +237,20 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Credit Limit
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Credit Limit</label>
               <input
                 type="number"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.creditLimit}
-                onChange={(e) =>
-                  setFormData({ ...formData, creditLimit: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Terms
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Terms</label>
               <select
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.paymentTerms}
-                onChange={(e) =>
-                  setFormData({ ...formData, paymentTerms: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
               >
                 <option value="">None</option>
                 <option value="Net 15">Net 15</option>
@@ -314,29 +264,21 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
           {/* Used Credits + Total Amount */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Used Credits
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Used Credits</label>
               <input
                 type="number"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.usedCredits}
-                onChange={(e) =>
-                  setFormData({ ...formData, usedCredits: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, usedCredits: e.target.value })}
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Total Amount
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Total Amount</label>
               <input
                 type="number"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.totalAmount}
-                onChange={(e) =>
-                  setFormData({ ...formData, totalAmount: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
               />
             </div>
           </div>
@@ -347,9 +289,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
               <input
                 type="checkbox"
                 checked={formData.kycStatus}
-                onChange={(e) =>
-                  setFormData({ ...formData, kycStatus: e.target.checked })
-                }
+                onChange={(e) => setFormData({ ...formData, kycStatus: e.target.checked })}
                 className="rounded border-gray-300"
               />
               KYC Verified
@@ -358,12 +298,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
               <input
                 type="checkbox"
                 checked={formData.sanctionsCheck}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    sanctionsCheck: e.target.checked,
-                  })
-                }
+                onChange={(e) => setFormData({ ...formData, sanctionsCheck: e.target.checked })}
                 className="rounded border-gray-300"
               />
               Sanctions Check Done
@@ -372,17 +307,12 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
           {/* Status */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Status
-            </label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
             <select
               className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               value={formData.status}
               onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  status: e.target.value as CustomerStatus,
-                })
+                setFormData({ ...formData, status: e.target.value as CustomerStatus })
               }
             >
               <option value="ACTIVE">ACTIVE</option>
@@ -402,14 +332,20 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={updateMutation.isPending}
               className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60"
             >
-              {submitting ? "Saving..." : "Save Changes"}
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
             </button>
           </div>
         </form>
       </div>
     </div>
   );
+};
+
+export const EditCustomerModal: React.FC<EditCustomerModalProps> = (props) => {
+  if (!props.isOpen || !props.customer) return null;
+  // key ensures fresh state if you open edit for a different customer
+  return <EditCustomerModalInner key={props.customer.customerCode} {...props} />;
 };

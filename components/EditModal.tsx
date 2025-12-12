@@ -1,7 +1,7 @@
 // components/EditModal.tsx
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -17,29 +17,22 @@ interface EditModalProps {
   onSave: (updatedValues: any) => void;
 }
 
-export default function EditModal({
-  open,
+function EditModalInner({
   onClose,
   fields,
   values,
   onSave,
-}: EditModalProps) {
-  const [form, setForm] = React.useState<any>(values || {});
-
-  React.useEffect(() => {
-    setForm(values || {});
-  }, [values]);
+}: Omit<EditModalProps, "open">) {
+  const [form, setForm] = useState<any>(() => values || {});
 
   const handleChange = (key: string, value: string) => {
     setForm((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => {
-    onSave(form);
-  };
+  const handleSave = () => onSave(form);
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit Entry</DialogTitle>
@@ -80,4 +73,12 @@ export default function EditModal({
       </DialogContent>
     </Dialog>
   );
+}
+
+export default function EditModal(props: EditModalProps) {
+  if (!props.open) return null;
+
+  // key makes the form reset when you open edit for a different record
+  const key = props.values?.id ?? "edit";
+  return <EditModalInner key={key} {...props} />;
 }

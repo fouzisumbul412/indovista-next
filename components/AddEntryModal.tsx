@@ -1,7 +1,7 @@
-// components/AddEntryModal.tsx
+// \components\AddEntryModal.tsx
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,32 +16,27 @@ interface AddEntryModalProps {
   onSave: (values: any) => void;
 }
 
-export default function AddEntryModal({
-  open,
+const buildEmpty = (fields: { key: string; label: string }[]) => {
+  const empty: any = {};
+  fields.forEach((f) => (empty[f.key] = ""));
+  return empty;
+};
+
+function AddEntryModalInner({
   onClose,
   fields,
   onSave,
-}: AddEntryModalProps) {
-  const [form, setForm] = React.useState<any>({});
-
-  React.useEffect(() => {
-    if (open) {
-      const empty: any = {};
-      fields.forEach((f) => (empty[f.key] = ""));
-      setForm(empty);
-    }
-  }, [open, fields]);
+}: Omit<AddEntryModalProps, "open">) {
+  const [form, setForm] = useState<any>(() => buildEmpty(fields));
 
   const handleChange = (key: string, value: string) => {
     setForm((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => {
-    onSave(form);
-  };
+  const handleSave = () => onSave(form);
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add New Entry</DialogTitle>
@@ -82,4 +77,12 @@ export default function AddEntryModal({
       </DialogContent>
     </Dialog>
   );
+}
+
+export default function AddEntryModal(props: AddEntryModalProps) {
+  if (!props.open) return null;
+
+  // key ensures form resets if fields change (different master-data type)
+  const key = props.fields.map((f) => f.key).join("|") || "add";
+  return <AddEntryModalInner key={key} {...props} />;
 }

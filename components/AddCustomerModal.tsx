@@ -1,7 +1,7 @@
-// components/AddCustomerModal.tsx
 "use client";
 
 import React, { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { X, Users } from "lucide-react";
 import { CustomerStatus, CustomerType } from "@/types";
 
@@ -11,37 +11,32 @@ interface AddCustomerModalProps {
   onAdd: () => void; // callback to refresh list
 }
 
-export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
-  isOpen,
+const emptyForm = () => ({
+  companyName: "",
+  type: "Distributor" as CustomerType,
+  contactPerson: "",
+  phone: "",
+  email: "",
+  address: "",
+  city: "",
+  country: "",
+  currency: "INR",
+  creditLimit: "",
+  paymentTerms: "Net 30",
+  status: "ACTIVE" as CustomerStatus,
+  kycStatus: false,
+  sanctionsCheck: false,
+});
+
+const AddCustomerModalInner: React.FC<AddCustomerModalProps> = ({
   onClose,
   onAdd,
 }) => {
-  const [formData, setFormData] = useState({
-    companyName: "",
-    type: "Distributor" as CustomerType,
-    contactPerson: "",
-    phone: "",
-    email: "",
-    address: "",
-    city: "",
-    country: "",
-    currency: "INR",
-    creditLimit: "",
-    paymentTerms: "Net 30",
-    status: "ACTIVE" as CustomerStatus,
-    kycStatus: false,
-    sanctionsCheck: false,
-  });
+  const queryClient = useQueryClient();
+  const [formData, setFormData] = useState(emptyForm());
 
-  const [submitting, setSubmitting] = useState(false);
-
-  if (!isOpen) return null;
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-
-    try {
+  const createMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch("/api/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -52,33 +47,24 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
       });
 
       if (!res.ok) {
-        throw new Error("Failed to create customer");
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message || "Failed to create customer");
       }
-
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       onAdd();
       onClose();
-      setFormData({
-        companyName: "",
-        type: "Distributor" as CustomerType,
-        contactPerson: "",
-        phone: "",
-        email: "",
-        address: "",
-        city: "",
-        country: "",
-        currency: "INR",
-        creditLimit: "",
-        paymentTerms: "Net 30",
-        status: "ACTIVE" as CustomerStatus,
-        kycStatus: false,
-        sanctionsCheck: false,
-      });
-    } catch (err) {
-      console.error("Error creating customer", err);
-      alert("Failed to create customer.");
-    } finally {
-      setSubmitting(false);
-    }
+    },
+    onError: (err: any) => {
+      console.error(err);
+      alert(err?.message || "Failed to create customer.");
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    createMutation.mutate();
   };
 
   return (
@@ -92,9 +78,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900">Add Customer</h2>
-              <p className="text-sm text-gray-500">
-                Create a new partner profile
-              </p>
+              <p className="text-sm text-gray-500">Create a new partner profile</p>
             </div>
           </div>
           <button
@@ -107,10 +91,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
         </div>
 
         {/* Form */}
-        <form
-          onSubmit={handleSubmit}
-          className="p-6 space-y-4 overflow-y-auto"
-        >
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
           {/* Company Name */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -121,27 +102,18 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
               type="text"
               className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               value={formData.companyName}
-              onChange={(e) =>
-                setFormData({ ...formData, companyName: e.target.value })
-              }
+              onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
             />
           </div>
 
           {/* Type + Contact Person */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Type
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Type</label>
               <select
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.type}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    type: e.target.value as CustomerType,
-                  })
-                }
+                onChange={(e) => setFormData({ ...formData, type: e.target.value as CustomerType })}
               >
                 <option value="Distributor">Distributor</option>
                 <option value="Importer">Importer</option>
@@ -157,12 +129,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                 type="text"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.contactPerson}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    contactPerson: e.target.value,
-                  })
-                }
+                onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
               />
             </div>
           </div>
@@ -170,62 +137,46 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
           {/* Phone + Email */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Phone
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Phone</label>
               <input
                 type="text"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, phone: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Email *
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Email *</label>
               <input
                 required
                 type="email"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               />
             </div>
           </div>
 
           {/* Address */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Address
-            </label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Address</label>
             <input
               type="text"
               className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               value={formData.address}
-              onChange={(e) =>
-                setFormData({ ...formData, address: e.target.value })
-              }
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
             />
           </div>
 
           {/* City + Country */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                City
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">City</label>
               <input
                 type="text"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.city}
-                onChange={(e) =>
-                  setFormData({ ...formData, city: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
               />
             </div>
             <div>
@@ -237,9 +188,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                 type="text"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.country}
-                onChange={(e) =>
-                  setFormData({ ...formData, country: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, country: e.target.value })}
               />
             </div>
           </div>
@@ -247,15 +196,11 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
           {/* Currency + Credit Limit + Terms */}
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Currency
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Currency</label>
               <select
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.currency}
-                onChange={(e) =>
-                  setFormData({ ...formData, currency: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
               >
                 <option value="INR">INR</option>
                 <option value="USD">USD</option>
@@ -265,29 +210,21 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Credit Limit
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Credit Limit</label>
               <input
                 type="number"
                 placeholder="0.00"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.creditLimit}
-                onChange={(e) =>
-                  setFormData({ ...formData, creditLimit: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Terms
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Terms</label>
               <select
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.paymentTerms}
-                onChange={(e) =>
-                  setFormData({ ...formData, paymentTerms: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
               >
                 <option value="Net 15">Net 15</option>
                 <option value="Net 30">Net 30</option>
@@ -303,9 +240,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
               <input
                 type="checkbox"
                 checked={formData.kycStatus}
-                onChange={(e) =>
-                  setFormData({ ...formData, kycStatus: e.target.checked })
-                }
+                onChange={(e) => setFormData({ ...formData, kycStatus: e.target.checked })}
                 className="rounded border-gray-300"
               />
               KYC Verified
@@ -315,10 +250,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                 type="checkbox"
                 checked={formData.sanctionsCheck}
                 onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    sanctionsCheck: e.target.checked,
-                  })
+                  setFormData({ ...formData, sanctionsCheck: e.target.checked })
                 }
                 className="rounded border-gray-300"
               />
@@ -328,17 +260,12 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
 
           {/* Status */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Status
-            </label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
             <select
               className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               value={formData.status}
               onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  status: e.target.value as CustomerStatus,
-                })
+                setFormData({ ...formData, status: e.target.value as CustomerStatus })
               }
             >
               <option value="ACTIVE">ACTIVE</option>
@@ -358,14 +285,19 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={createMutation.isPending}
               className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60"
             >
-              {submitting ? "Saving..." : "Add Customer"}
+              {createMutation.isPending ? "Saving..." : "Add Customer"}
             </button>
           </div>
         </form>
       </div>
     </div>
   );
+};
+
+export const AddCustomerModal: React.FC<AddCustomerModalProps> = (props) => {
+  if (!props.isOpen) return null; // Inner mounts only when open -> reset state without useEffect
+  return <AddCustomerModalInner {...props} />;
 };
