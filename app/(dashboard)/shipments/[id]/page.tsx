@@ -2,8 +2,7 @@
 import React, { useState } from 'react';
 import Link from "next/link";
 import { useParams } from "next/navigation";
-
-import { MOCK_SHIPMENTS } from '@/data/mock';
+import { useQuery } from "@tanstack/react-query";
 import { Card } from '@/components/ui/Card';
 import { StatusBadge } from '@/components/ui/Badge';
 import { ArrowLeft, MapPin, Calendar, Thermometer, FileText, CheckCircle, Clock, AlertTriangle, Box, DollarSign } from 'lucide-react';
@@ -171,7 +170,18 @@ const ShipmentDetail = () => {
   const [activeTab, setActiveTab] = useState('overview');
   
   // In a real app, useQuery hook here.
-  const shipment = MOCK_SHIPMENTS.find(s => s.id === id);
+  const { data: shipment, isLoading, isError } = useQuery({
+  queryKey: ["shipment", id],
+  queryFn: async () => {
+    const res = await fetch(`/api/shipments/${id}`);
+    if (!res.ok) throw new Error("Failed to load shipment");
+    return res.json();
+  },
+  enabled: !!id,
+});
+
+if (isLoading) return <div className="p-8 text-center text-gray-500">Loading…</div>;
+if (isError || !shipment) return <div className="p-8 text-center text-gray-500">Shipment not found</div>;
 
   if (!shipment) return <div className="p-8 text-center text-gray-500">Shipment not found</div>;
 

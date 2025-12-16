@@ -53,6 +53,8 @@ model Customer {
   status          CustomerStatus @default(ACTIVE)           // <-- Added enum field
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+
+  shipments  Shipment[]
 }
 
 enum CustomerType {
@@ -75,6 +77,9 @@ model Port {
   country   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  originShipments      Shipment[] @relation("OriginPort")
+  destinationShipments Shipment[] @relation("DestinationPort")
 }
 
 model Incoterm {
@@ -84,6 +89,8 @@ model Incoterm {
   type      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  shipments Shipment[]
 }
 
 model StatusCode {
@@ -102,6 +109,8 @@ model Currency {
   exchangeRate  Float    // EXCHANGE RATE TO INR
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  
+  shipments Shipment[]
 }
 
 model Temperature {
@@ -109,8 +118,12 @@ model Temperature {
   name       String
   range      String
   tolerance  String
+  setPoint   Float?          // ✅ added
+  unit       TemperatureUnit @default(C) // ✅ added
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  shipments  Shipment[]
 }
 
 enum StorageType {
@@ -156,6 +169,7 @@ model Product {
 
   categoryId     String
   category       Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  shipmentItems    ShipmentItem[]
 
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
@@ -163,6 +177,7 @@ model Product {
   @@index([name])
   @@index([categoryId])
   @@map("products")
+
 }
 enum TransportMode {
   AIR
@@ -191,6 +206,193 @@ model ContainerType {
   status        Boolean       @default(true)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+
+  shipments Shipment[]
 }
 
 
+enum ShipmentDirection {
+  IMPORT
+  EXPORT
+}
+
+enum ShipmentCommodity {
+  FROZEN
+  SPICE
+  BOTH
+  OTHER
+}
+
+enum ShipmentStatus {
+  BOOKED
+  PICKED_UP
+  IN_TRANSIT_ORIGIN
+  AT_PORT_ORIGIN
+  CUSTOMS_EXPORT
+  ON_VESSEL
+  AT_PORT_DEST
+  CUSTOMS_IMPORT
+  DELIVERED
+  EXCEPTION
+}
+
+enum SLAStatus {
+  ON_TIME
+  AT_RISK
+  BREACHED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+}
+
+enum TemperatureUnit {
+  C
+  F
+}
+
+enum ShipmentDocumentType {
+  INVOICE
+  PACKING_LIST
+  BILL_LADING
+  HEALTH_CERT
+  ORIGIN_CERT
+  CUSTOMS_DEC
+  INSURANCE
+  OTHER
+}
+
+enum ShipmentDocumentStatus {
+  MISSING
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  FINAL
+  PENDING
+  NOT_RECEIVED
+}
+model Shipment {
+  id            String            @id @default(cuid())
+
+  reference     String            @unique
+  masterDoc     String?
+
+  customerId    String
+  customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  direction     ShipmentDirection
+  mode          TransportMode
+  commodity     ShipmentCommodity
+
+  incotermId    Int?
+  incoterm      Incoterm?         @relation(fields: [incotermId], references: [id], onDelete: Restrict)
+
+  // Origin
+  originCity      String
+  originCountry   String
+  originContact   String?
+  originPortId    Int?
+  originPort      Port?           @relation("OriginPort", fields: [originPortId], references: [id], onDelete: Restrict)
+
+  // Destination
+  destCity        String
+  destCountry     String
+  destContact     String?
+  destPortId      Int?
+  destPort        Port?           @relation("DestinationPort", fields: [destPortId], references: [id], onDelete: Restrict)
+
+  // Step 3
+  containerTypeId Int?
+  containerType   ContainerType?  @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+
+  temperatureId   Int?
+  temperature     Temperature?    @relation(fields: [temperatureId], references: [id], onDelete: Restrict)
+
+  // Step 4
+  status        ShipmentStatus     @default(BOOKED)
+  etd           DateTime?
+  eta           DateTime?
+
+  slaStatus     SLAStatus          @default(ON_TIME)
+
+  currencyId   Int?
+  currency      Currency?          @relation(fields: [currencyId], references: [id], onDelete: Restrict)
+  revenue       Float              @default(0)
+  cost          Float              @default(0)
+  margin        Float              @default(0)
+  invoiceStatus InvoiceStatus      @default(DRAFT)
+
+  items         ShipmentItem[]
+  documents     ShipmentDocument[]
+  events        ShipmentEvent[]
+
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([customerId])
+  @@index([reference])
+  @@index([mode])
+  @@index([direction])
+}
+
+model ShipmentItem {
+  id         String   @id @default(cuid())
+
+  shipmentId String
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  quantity   Int
+  unit       String
+  weightKg   Float?
+  packaging  String?
+
+  createdAt  DateTime @default(now())
+
+  @@index([shipmentId])
+  @@index([productId])
+}
+
+model ShipmentDocument {
+  id         String                @id @default(cuid())
+
+  shipmentId String
+  shipment   Shipment              @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  name       String
+  type       ShipmentDocumentType
+  status     ShipmentDocumentStatus @default(DRAFT)
+
+  expiryDate DateTime?
+  uploadedAt DateTime              @default(now())
+
+  fileUrl    String?
+  mimeType   String?
+  fileSize   Int?
+
+  @@index([shipmentId])
+  @@index([type])
+  @@index([status])
+}
+
+model ShipmentEvent {
+  id          String         @id @default(cuid())
+
+  shipmentId  String
+  shipment    Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  status      ShipmentStatus
+  timestamp   DateTime       @default(now())
+  location    String?
+  description String?
+  user        String?
+
+  @@index([shipmentId])
+  @@index([status])
+}
