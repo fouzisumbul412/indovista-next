@@ -16,23 +16,22 @@ import {
   DollarSign,
   Thermometer,
   Download,
+  Plane,
+  Truck,
 } from "lucide-react";
 import Link from "next/link";
 import EditModal from "@/components/EditModal";
 import AddEntryModal from "@/components/AddEntryModal";
 import Pagination from "@/components/Pagination";
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 type MasterDataType =
   | "ports"
   | "incoterms"
   | "status-codes"
   | "currencies"
-  | "temp-presets";
+  | "temp-presets"
+  | "containers";
 
 interface MasterDataEntry {
   id: number;
@@ -57,6 +56,37 @@ interface Config {
 }
 
 const PAGE_SIZE = 10;
+
+/* ---------------- ICON + COLOR HELPERS (NO UI LAYOUT CHANGE) ---------------- */
+
+const modeIcon = (modeRaw: any) => {
+  const mode = String(modeRaw ?? "").trim().toUpperCase();
+  switch (mode) {
+    case "AIR":
+      return <Plane className="w-4 h-4 text-blue-600" />;
+    case "SEA":
+      return <Ship className="w-4 h-4 text-teal-600" />;
+    case "ROAD":
+      return <Truck className="w-4 h-4 text-amber-600" />;
+    default:
+      return null;
+  }
+};
+
+const modeTabStyle = (active: boolean, mode: string) => {
+  if (!active) return "bg-gray-100 text-gray-600 hover:bg-gray-200";
+
+  switch (mode) {
+    case "AIR":
+      return "bg-blue-600 text-white";
+    case "SEA":
+      return "bg-teal-600 text-white";
+    case "ROAD":
+      return "bg-amber-600 text-white";
+    default:
+      return "bg-blue-600 text-white"; // ALL keeps your original active color feel
+  }
+};
 
 const configMap: Record<MasterDataType, Config> = {
   ports: {
@@ -114,12 +144,28 @@ const configMap: Record<MasterDataType, Config> = {
       { key: "tolerance", label: "Tolerance" },
     ],
   },
+  containers: {
+    title: "Containers / ULD Types",
+    subtitle: "Air, Sea & Road Containers",
+    icon: <Ship className="w-6 h-6 text-indigo-600" />,
+    bg: "bg-indigo-50",
+    columns: [
+      { key: "code", label: "Code" },
+      { key: "name", label: "Name" },
+      { key: "transportMode", label: "Mode" },
+      { key: "type", label: "Type" },
+      { key: "maxWeight", label: "Max Weight" },
+      { key: "weightUnit", label: "Unit" }, // ✅
+    ],
+  },
 };
 
 const MasterData: React.FC<MasterDataProps> = ({ type }) => {
   const queryClient = useQueryClient();
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [modeFilter, setModeFilter] = useState<"ALL" | "AIR" | "SEA" | "ROAD">("ALL");
+
   const [editOpen, setEditOpen] = useState(false);
   const [editItem, setEditItem] = useState<MasterDataEntry | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -129,13 +175,18 @@ const MasterData: React.FC<MasterDataProps> = ({ type }) => {
 
   const config = configMap[type];
 
-  // 🔹 normalize numeric fields before sending to API
   const normalizeForType = (record: any) => {
     const copy: any = { ...record };
 
     if (type === "currencies" && copy.exchangeRate !== undefined) {
       const num = parseFloat(copy.exchangeRate);
       copy.exchangeRate = isNaN(num) ? null : num;
+    }
+
+    // ✅ FIX FOR CONTAINERS
+    if (type === "containers" && copy.maxWeight !== undefined) {
+      const num = parseFloat(copy.maxWeight);
+      copy.maxWeight = isNaN(num) ? null : num;
     }
 
     return copy;
@@ -171,9 +222,8 @@ const MasterData: React.FC<MasterDataProps> = ({ type }) => {
       }
     },
     onSuccess: (_data, id) => {
-      queryClient.setQueryData<MasterDataEntry[]>(
-        ["master-data", type],
-        (old = []) => old.filter((item) => item.id !== id)
+      queryClient.setQueryData<MasterDataEntry[]>(["master-data", type], (old = []) =>
+        old.filter((item) => item.id !== id)
       );
     },
   });
@@ -197,9 +247,8 @@ const MasterData: React.FC<MasterDataProps> = ({ type }) => {
       return (await res.json()) as MasterDataEntry;
     },
     onSuccess: (updated) => {
-      queryClient.setQueryData<MasterDataEntry[]>(
-        ["master-data", type],
-        (old = []) => old.map((i) => (i.id === updated.id ? updated : i))
+      queryClient.setQueryData<MasterDataEntry[]>(["master-data", type], (old = []) =>
+        old.map((i) => (i.id === updated.id ? updated : i))
       );
       setEditOpen(false);
       setEditItem(null);
@@ -224,10 +273,10 @@ const MasterData: React.FC<MasterDataProps> = ({ type }) => {
       return (await res.json()) as MasterDataEntry;
     },
     onSuccess: (created) => {
-      queryClient.setQueryData<MasterDataEntry[]>(
-        ["master-data", type],
-        (old = []) => [...old, created]
-      );
+      queryClient.setQueryData<MasterDataEntry[]>(["master-data", type], (old = []) => [
+        ...old,
+        created,
+      ]);
       setAddOpen(false);
     },
   });
@@ -236,13 +285,20 @@ const MasterData: React.FC<MasterDataProps> = ({ type }) => {
   const processed = useMemo(() => {
     const base = Array.isArray(records) ? records : [];
 
-    const filtered = base.filter((item) =>
-      Object.values(item).some((val) =>
-        String(val ?? "")
-          .toLowerCase()
-          .includes(searchTerm.toLowerCase())
+    const filtered = base
+      .filter((item) =>
+        Object.values(item).some((val) =>
+          String(val ?? "")
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase())
+        )
       )
-    );
+      .filter((item) => {
+        if (type !== "containers") return true;
+        if (modeFilter === "ALL") return true;
+        const itemMode = String(item.transportMode ?? "").trim().toUpperCase();
+        return itemMode === modeFilter;
+      });
 
     let sorted = filtered;
     if (sortKey) {
@@ -271,7 +327,8 @@ const MasterData: React.FC<MasterDataProps> = ({ type }) => {
     const paginated = sorted.slice(start, start + PAGE_SIZE);
 
     return { filtered: sorted, paginated, total, currentPage };
-  }, [records, searchTerm, sortKey, sortDir, page]);
+    // ✅ IMPORTANT: include modeFilter + type so containers filter recalculates
+  }, [records, searchTerm, modeFilter, type, sortKey, sortDir, page]);
 
   // keep page in range
   useEffect(() => {
@@ -378,9 +435,7 @@ const MasterData: React.FC<MasterDataProps> = ({ type }) => {
             <div className="flex items-center gap-3">
               <div className={`p-2 rounded-lg ${config.bg}`}>{config.icon}</div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  {config.title}
-                </h1>
+                <h1 className="text-2xl font-bold text-gray-900">{config.title}</h1>
                 <p className="text-gray-500 text-sm">{config.subtitle}</p>
               </div>
             </div>
@@ -406,8 +461,38 @@ const MasterData: React.FC<MasterDataProps> = ({ type }) => {
 
         {/* Table card */}
         <Card noPadding className="border border-gray-200 overflow-hidden">
-          {/* Top bar */}
-          <div className="p-4 border-b border-gray-200 bg-white flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+          <div className="p-4 border-b border-gray-200 bg-white flex flex-col gap-3">
+            {/* MODE TABS – ONLY FOR CONTAINERS */}
+            {type === "containers" && (
+              <div className="flex items-center gap-2">
+                {["ALL", "SEA", "AIR", "ROAD"].map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      setModeFilter(mode as any);
+                      setPage(1);
+                    }}
+                    className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${modeTabStyle(
+                      modeFilter === mode,
+                      mode
+                    )}`}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      {mode === "AIR" ? (
+                        <Plane className={`w-4 h-4 ${modeFilter === mode ? "text-white" : "text-blue-600"}`} />
+                      ) : mode === "SEA" ? (
+                        <Ship className={`w-4 h-4 ${modeFilter === mode ? "text-white" : "text-teal-600"}`} />
+                      ) : mode === "ROAD" ? (
+                        <Truck className={`w-4 h-4 ${modeFilter === mode ? "text-white" : "text-amber-600"}`} />
+                      ) : null}
+                      {mode}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* SEARCH */}
             <div className="relative max-w-md w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -421,10 +506,9 @@ const MasterData: React.FC<MasterDataProps> = ({ type }) => {
                 className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+
             {anyLoading && (
-              <span className="text-xs text-gray-400 animate-pulse">
-                Loading…
-              </span>
+              <span className="text-xs text-gray-400 animate-pulse">Loading…</span>
             )}
           </div>
 
@@ -444,9 +528,7 @@ const MasterData: React.FC<MasterDataProps> = ({ type }) => {
                         <div className="inline-flex items-center gap-1">
                           {col.label}
                           <ArrowUpDown
-                            className={`w-3 h-3 ${
-                              active ? "text-blue-600" : "text-gray-400"
-                            }`}
+                            className={`w-3 h-3 ${active ? "text-blue-600" : "text-gray-400"}`}
                           />
                           {active && (
                             <span className="text-[10px] text-blue-600">
@@ -468,12 +550,19 @@ const MasterData: React.FC<MasterDataProps> = ({ type }) => {
                       <td
                         key={col.key}
                         className={`px-6 py-3 ${
-                          idx === 0
-                            ? "font-medium text-gray-900"
-                            : "text-gray-700"
+                          idx === 0 ? "font-medium text-gray-900" : "text-gray-700"
                         }`}
                       >
-                        {item[col.key] ?? "-"}
+                        {col.key === "transportMode" ? (
+                          <div className="flex items-center gap-2">
+                            {modeIcon(item.transportMode)}
+                            <span>{String(item.transportMode ?? "-")}</span>
+                          </div>
+                        ) : col.key === "maxWeight" ? (
+                          `${item.maxWeight ?? "-"} ${item.weightUnit ?? ""}`
+                        ) : (
+                          item[col.key] ?? "-"
+                        )}
                       </td>
                     ))}
                     <td className="px-6 py-3 text-right space-x-1 whitespace-nowrap">

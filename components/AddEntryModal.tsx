@@ -1,4 +1,3 @@
-// \components\AddEntryModal.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -33,7 +32,30 @@ function AddEntryModalInner({
     setForm((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => onSave(form);
+  const handleSave = () => {
+    // ✅ Validation only when fields exist
+    if ("transportMode" in form && !form.transportMode) {
+      alert("Please select Transport Mode");
+      return;
+    }
+
+    if ("type" in form && !form.type) {
+      alert("Please enter Container Type");
+      return;
+    }
+
+    if ("maxWeight" in form && form.maxWeight === "") {
+      alert("Please enter Max Weight");
+      return;
+    }
+
+    if ("weightUnit" in form && !form.weightUnit) {
+      alert("Please select Weight Unit");
+      return;
+    }
+
+    onSave(form);
+  };
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
@@ -48,12 +70,55 @@ function AddEntryModalInner({
               <label className="text-sm font-medium text-gray-700">
                 {f.label}
               </label>
-              <input
-                type="text"
-                value={form[f.key] ?? ""}
-                onChange={(e) => handleChange(f.key, e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+
+              {/* Transport Mode */}
+              {f.key === "transportMode" ? (
+                <select
+                  value={form[f.key] ?? ""}
+                  onChange={(e) => handleChange(f.key, e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Mode</option>
+                  <option value="AIR">Air</option>
+                  <option value="SEA">Sea</option>
+                  <option value="ROAD">Road</option>
+                </select>
+
+              /* Max Weight (NUMBER ONLY) */
+              ) : f.key === "maxWeight" ? (
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Enter weight value"
+                  value={form[f.key] ?? ""}
+                  onChange={(e) => handleChange(f.key, e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+
+              /* Weight Unit */
+              ) : f.key === "weightUnit" ? (
+                <select
+                  value={form[f.key] ?? ""}
+                  onChange={(e) => handleChange(f.key, e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Unit</option>
+                  <option value="MANN">Mann / Maund</option>
+                  <option value="KG">Kilogram (kg)</option>
+                  <option value="QUINTAL">Quintal (q)</option>
+                  <option value="TON">Metric Ton (t)</option>
+                  <option value="LB">Pounds (lb)</option>
+                </select>
+
+              /* Default Text Input */
+              ) : (
+                <input
+                  type="text"
+                  value={form[f.key] ?? ""}
+                  onChange={(e) => handleChange(f.key, e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+              )}
             </div>
           ))}
         </div>
@@ -82,7 +147,7 @@ function AddEntryModalInner({
 export default function AddEntryModal(props: AddEntryModalProps) {
   if (!props.open) return null;
 
-  // key ensures form resets if fields change (different master-data type)
+  // Reset form when fields change
   const key = props.fields.map((f) => f.key).join("|") || "add";
   return <AddEntryModalInner key={key} {...props} />;
 }

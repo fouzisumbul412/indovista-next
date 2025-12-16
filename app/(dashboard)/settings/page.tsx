@@ -19,7 +19,8 @@ type DynamicKey =
   | "incoterms"
   | "status-codes"
   | "currencies"
-  | "temp-presets";
+  | "temp-presets"
+  | "containers";
 
 type PreviewMap = Partial<Record<DynamicKey, string[]>>;
 
@@ -78,6 +79,16 @@ const dynamicSettings: {
     iconBg: "bg-cyan-50",
     iconColor: "text-cyan-600",
   },
+  {
+  key: "containers",
+  title: "Containers / ULD Types",
+  subtitle: "Air • Sea • Road",
+  description: "Manage container and ULD master data.",
+  icon: <Ship className="w-6 h-6" />,
+  iconBg: "bg-indigo-50",
+  iconColor: "text-indigo-600",
+},
+
 ];
 
 const SettingsCard = ({

@@ -8,6 +8,7 @@ const modelMap: Record<string, any> = {
   "status-codes": prisma.statusCode,
   currencies: prisma.currency,
   "temp-presets": prisma.temperature,
+  containers: prisma.containerType,
 };
 
 type RouteContext = {

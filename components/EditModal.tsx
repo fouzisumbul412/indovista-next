@@ -1,4 +1,3 @@
-// components/EditModal.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -29,7 +28,30 @@ function EditModalInner({
     setForm((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => onSave(form);
+  const handleSave = () => {
+    // ✅ Validation (containers only when fields exist)
+    if ("transportMode" in form && !form.transportMode) {
+      alert("Please select Transport Mode");
+      return;
+    }
+
+    if ("type" in form && !form.type) {
+      alert("Please enter Container Type");
+      return;
+    }
+
+    if ("maxWeight" in form && form.maxWeight === "") {
+      alert("Please enter Max Weight");
+      return;
+    }
+
+    if ("weightUnit" in form && !form.weightUnit) {
+      alert("Please select Weight Unit");
+      return;
+    }
+
+    onSave(form);
+  };
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
@@ -44,12 +66,54 @@ function EditModalInner({
               <label className="text-sm font-medium text-gray-700">
                 {f.label}
               </label>
-              <input
-                type="text"
-                value={form[f.key] ?? ""}
-                onChange={(e) => handleChange(f.key, e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+
+              {/* Transport Mode */}
+              {f.key === "transportMode" ? (
+                <select
+                  value={form[f.key] ?? ""}
+                  onChange={(e) => handleChange(f.key, e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Mode</option>
+                  <option value="AIR">Air</option>
+                  <option value="SEA">Sea</option>
+                  <option value="ROAD">Road</option>
+                </select>
+
+              /* Max Weight (NUMBER ONLY) */
+              ) : f.key === "maxWeight" ? (
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form[f.key] ?? ""}
+                  onChange={(e) => handleChange(f.key, e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+
+              /* Weight Unit */
+              ) : f.key === "weightUnit" ? (
+                <select
+                  value={form[f.key] ?? ""}
+                  onChange={(e) => handleChange(f.key, e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Unit</option>
+                  <option value="MANN">Mann / Maund</option>
+                  <option value="KG">Kilogram (kg)</option>
+                  <option value="QUINTAL">Quintal (q)</option>
+                  <option value="TON">Metric Ton (t)</option>
+                  <option value="LB">Pounds (lb)</option>
+                </select>
+
+              /* Default Text */
+              ) : (
+                <input
+                  type="text"
+                  value={form[f.key] ?? ""}
+                  onChange={(e) => handleChange(f.key, e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+              )}
             </div>
           ))}
         </div>
@@ -78,7 +142,7 @@ function EditModalInner({
 export default function EditModal(props: EditModalProps) {
   if (!props.open) return null;
 
-  // key makes the form reset when you open edit for a different record
+  // reset form when editing another row
   const key = props.values?.id ?? "edit";
   return <EditModalInner key={key} {...props} />;
 }

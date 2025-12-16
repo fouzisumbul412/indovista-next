@@ -164,3 +164,33 @@ model Product {
   @@index([categoryId])
   @@map("products")
 }
+enum TransportMode {
+  AIR
+  SEA
+  ROAD
+}
+
+enum WeightUnit {
+  MANN        // Mann / Maund
+  KG          // Kilogram
+  QUINTAL     // Quintal (q)
+  TON         // Metric Ton (t)
+  LB          // Pounds
+}
+
+model ContainerType {
+  id            Int           @id @default(autoincrement())
+  code          String        @unique
+  name          String
+  transportMode TransportMode
+  type          String
+
+  maxWeight     Float?
+  weightUnit    WeightUnit    @default(KG)
+
+  status        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+

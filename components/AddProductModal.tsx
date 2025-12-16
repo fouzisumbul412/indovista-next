@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { X, Package, Snowflake, Leaf } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Product } from "@/types/product";
 import { Category } from "@/types/category";
 
-type ProductPayload = Omit<Product, "id" | "category" | "createdAt" | "updatedAt"> & { id?: string };
+type ProductPayload = Omit<Product, "id" | "category" | "createdAt" | "updatedAt"> & {
+  id?: string;
+};
 
 interface AddProductModalProps {
   isOpen: boolean;
@@ -21,33 +23,47 @@ const fetchCategories = async (): Promise<Category[]> => {
   return res.json();
 };
 
+// ✅ stable reference (prevents dependency change loop)
+const EMPTY_CATEGORIES: Category[] = [];
+
+const EMPTY_FORM: ProductPayload = {
+  id: undefined,
+  name: "",
+  categoryId: "",
+  type: "FROZEN",
+  hsCode: "",
+  temperature: "",
+  packSize: "",
+  shelfLife: "",
+  unitsPerCarton: null,
+  cartonsPerPallet: null,
+  notes: "",
+};
+
 export const AddProductModal: React.FC<AddProductModalProps> = ({
   isOpen,
   onClose,
   onSave,
   initialData,
 }) => {
-  const { data: categories = [] } = useQuery<Category[]>({
+  const { data: categories = EMPTY_CATEGORIES } = useQuery<Category[]>({
     queryKey: ["categories"],
     queryFn: fetchCategories,
     enabled: isOpen,
+    // optional but nice: keeps cached categories between opens
+    staleTime: 5 * 60 * 1000,
   });
 
-  const [formData, setFormData] = useState<ProductPayload>({
-    id: undefined,
-    name: "",
-    categoryId: "",
-    type: "FROZEN",
-    hsCode: "",
-    temperature: "",
-    packSize: "",
-    shelfLife: "",
-    unitsPerCarton: null,
-    cartonsPerPallet: null,
-    notes: "",
-  });
+  const defaultCategoryId = useMemo(() => {
+    return categories?.[0]?.id ?? "";
+  }, [categories]);
 
+  const [formData, setFormData] = useState<ProductPayload>(EMPTY_FORM);
+
+  // ✅ Initialize form when modal opens / switching edit vs add
   useEffect(() => {
+    if (!isOpen) return;
+
     if (initialData) {
       setFormData({
         id: initialData.id,
@@ -62,22 +78,27 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         cartonsPerPallet: initialData.cartonsPerPallet ?? null,
         notes: initialData.notes ?? "",
       });
-    } else {
-      setFormData({
-        id: undefined,
-        name: "",
-        categoryId: categories?.[0]?.id ?? "",
-        type: "FROZEN",
-        hsCode: "",
-        temperature: "",
-        packSize: "",
-        shelfLife: "",
-        unitsPerCarton: null,
-        cartonsPerPallet: null,
-        notes: "",
-      });
+      return;
     }
-  }, [initialData, isOpen, categories]);
+
+    // Add mode: reset, but DO NOT force category if not available yet
+    setFormData((prev) => ({
+      ...EMPTY_FORM,
+      categoryId: prev.categoryId || defaultCategoryId || "",
+    }));
+  }, [isOpen, initialData, defaultCategoryId]);
+
+  // ✅ When categories finish loading, set default category only if empty (add mode)
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initialData) return; // don't overwrite edit mode
+    if (!defaultCategoryId) return;
+
+    setFormData((prev) => {
+      if (prev.categoryId) return prev; // user already selected / already set
+      return { ...prev, categoryId: defaultCategoryId };
+    });
+  }, [isOpen, initialData, defaultCategoryId]);
 
   if (!isOpen) return null;
 
@@ -109,11 +130,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className=" p-4 space-y-3 overflow-y-auto max-h-[calc(80vh-72px)]">
+        <form onSubmit={handleSubmit} className="p-4 space-y-3 overflow-y-auto max-h-[calc(80vh-72px)]">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Product Name *
-            </label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Product Name *</label>
             <input
               required
               type="text"
