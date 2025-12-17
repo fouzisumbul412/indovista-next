@@ -2,9 +2,19 @@
 
 import React, { useEffect, useState } from "react";
 import { X, Layers, Thermometer, FileText } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Category } from "@/types/category";
+import type { TemperaturePreset } from "@/types/temperature";
 
-type CategoryPayload = Omit<Category, "id"> & { id?: string };
+type CategoryPayload = {
+  id?: string;
+  name: string;
+  hsCode?: string | null;
+  storageType: "AMBIENT" | "CHILLED" | "FROZEN";
+  documents?: string | null;
+  notes?: string | null;
+  temperatureId?: number | null;
+};
 
 interface Props {
   isOpen: boolean;
@@ -13,24 +23,41 @@ interface Props {
   initialData?: Category | null;
 }
 
+const fetchTemperatures = async (): Promise<TemperaturePreset[]> => {
+  const res = await fetch("/api/master-data/temp-presets", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch temperature presets");
+  return res.json();
+};
+
+const EMPTY_TEMPS: TemperaturePreset[] = [];
+
 export const CategoryModal: React.FC<Props> = ({ isOpen, onClose, onSave, initialData }) => {
+  const { data: temps = EMPTY_TEMPS, isLoading: tempsLoading } = useQuery<TemperaturePreset[]>({
+    queryKey: ["temperature-presets"],
+    queryFn: fetchTemperatures,
+    enabled: isOpen,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const [formData, setFormData] = useState<CategoryPayload>({
     id: undefined,
     name: "",
     hsCode: "",
-    temperature: "",
+    temperatureId: null,
     storageType: "AMBIENT",
     documents: "",
     notes: "",
   });
 
   useEffect(() => {
+    if (!isOpen) return;
+
     if (initialData) {
       setFormData({
         id: initialData.id,
         name: initialData.name,
         hsCode: initialData.hsCode ?? "",
-        temperature: initialData.temperature ?? "",
+        temperatureId: initialData.temperatureId ?? null,
         storageType: initialData.storageType,
         documents: initialData.documents ?? "",
         notes: initialData.notes ?? "",
@@ -40,7 +67,7 @@ export const CategoryModal: React.FC<Props> = ({ isOpen, onClose, onSave, initia
         id: undefined,
         name: "",
         hsCode: "",
-        temperature: "",
+        temperatureId: null,
         storageType: "AMBIENT",
         documents: "",
         notes: "",
@@ -106,18 +133,27 @@ export const CategoryModal: React.FC<Props> = ({ isOpen, onClose, onSave, initia
               />
             </div>
 
+            {/* ✅ Temperature dropdown */}
             <div>
-              <label className="block text-sm font-semibold mb-1">Temperature</label>
+              <label className="block text-sm font-semibold mb-1">Temperature Preset</label>
               <div className="flex items-center gap-2">
                 <Thermometer className="w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="e.g. -18°C"
-                  value={formData.temperature ?? ""}
-                  onChange={(e) => update("temperature", e.target.value)}
+                <select
+                  value={formData.temperatureId ?? ""}
+                  onChange={(e) =>
+                    update("temperatureId", e.target.value === "" ? null : Number(e.target.value))
+                  }
                   className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                />
+                >
+                  <option value="">{tempsLoading ? "Loading..." : "None"}</option>
+                  {temps.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} — {t.range} (±{t.tolerance})
+                    </option>
+                  ))}
+                </select>
               </div>
+              <p className="text-xs text-gray-400 mt-1">Select a preset from master data</p>
             </div>
           </div>
 

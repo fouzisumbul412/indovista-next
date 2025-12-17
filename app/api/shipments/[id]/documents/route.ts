@@ -5,12 +5,15 @@ import { prisma } from "@/lib/prisma";
 import path from "path";
 import fs from "fs/promises";
 
+type Ctx = { params: { id: string } | Promise<{ id: string }> };
+
 function safeName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const shipmentId = params.id;
+export async function POST(req: Request, { params }: Ctx) {
+  const { id: shipmentId } = await params;
+
   const form = await req.formData();
 
   const file = form.get("file") as File | null;
@@ -54,10 +57,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   return NextResponse.json({ id: created.id, fileUrl: created.fileUrl });
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, { params }: Ctx) {
+  const { id: shipmentId } = await params;
+
   const docs = await prisma.shipmentDocument.findMany({
-    where: { shipmentId: params.id },
+    where: { shipmentId },
     orderBy: { uploadedAt: "desc" },
   });
+
   return NextResponse.json(docs);
 }

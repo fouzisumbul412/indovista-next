@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MOCK_SHIPMENTS } from "@/data/mock";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Badge";
 import {
@@ -19,8 +18,23 @@ import {
   Phone,
   ShieldCheck,
 } from "lucide-react";
-import { Shipment, Customer } from "@/types";
+import type { Customer } from "@/types";
 import { EditCustomerModal } from "@/components/EditCustomerModal";
+
+type CustomerShipmentRow = {
+  id: string;
+  reference: string;
+  mode: string;
+  status: string;
+  etd?: string;
+  origin: { code: string };
+  destination: { code: string };
+  financials: { currency: string; revenue: number };
+};
+
+type CustomerWithShipments = Customer & {
+  shipments?: CustomerShipmentRow[];
+};
 
 const CustomerDetail = () => {
   const { code } = useParams<{ code: string }>(); // e.g. "CUST-001"
@@ -28,11 +42,6 @@ const CustomerDetail = () => {
   const queryClient = useQueryClient();
 
   const [isEditOpen, setIsEditOpen] = useState(false);
-
-  // From mock for now; later replace with DB relation
-  const customerShipments: Shipment[] = MOCK_SHIPMENTS.filter(
-    (s) => (s as any).customerCode === code
-  );
 
   const formatCurrency = (amount: number, currency: string) =>
     new Intl.NumberFormat("en-US", {
@@ -65,13 +74,13 @@ const CustomerDetail = () => {
     }
   };
 
-  // ✅ React Query: fetch single customer
+  // ✅ fetch customer + shipments from DB
   const {
     data: customer,
     isLoading,
     isError,
     error,
-  } = useQuery<Customer, Error>({
+  } = useQuery<CustomerWithShipments, Error>({
     queryKey: ["customer", code],
     enabled: !!code,
     queryFn: async () => {
@@ -84,16 +93,16 @@ const CustomerDetail = () => {
         } catch {}
         throw new Error(message);
       }
-      return (await res.json()) as Customer;
+      return (await res.json()) as CustomerWithShipments;
     },
   });
 
-  // ✅ React Query: delete customer
+  const customerShipments = customer?.shipments || [];
+
+  // ✅ delete customer
   const deleteMutation = useMutation({
     mutationFn: async (customerCode: string) => {
-      const res = await fetch(`/api/customers/${customerCode}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/customers/${customerCode}`, { method: "DELETE" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.message || "Failed to delete customer");
@@ -112,10 +121,8 @@ const CustomerDetail = () => {
 
   const handleDelete = async () => {
     if (!customer) return;
-
     const ok = confirm(`Are you sure you want to delete ${customer.companyName}?`);
     if (!ok) return;
-
     deleteMutation.mutate(customer.customerCode);
   };
 
@@ -343,9 +350,9 @@ const CustomerDetail = () => {
                           {shipment.destination.code}
                         </td>
                         <td className="px-4 py-3 text-gray-500 text-xs uppercase">{shipment.mode}</td>
-                        <td className="px-4 py-3 text-gray-600 font-mono text-xs">{shipment.etd}</td>
+                        <td className="px-4 py-3 text-gray-600 font-mono text-xs">{shipment.etd || "—"}</td>
                         <td className="px-4 py-3">
-                          <StatusBadge status={shipment.status} />
+                          <StatusBadge status={shipment.status as any} />
                         </td>
                         <td className="px-4 py-3 font-medium text-gray-900">
                           {shipment.financials.currency} {shipment.financials.revenue}
@@ -364,9 +371,10 @@ const CustomerDetail = () => {
       <EditCustomerModal
         isOpen={isEditOpen}
         onClose={() => setIsEditOpen(false)}
-        customer={customer}
+        customer={customer as any}
         onUpdated={(updated) => {
-          queryClient.setQueryData(["customer", code], updated);
+          // API now returns shipments too (because PUT re-fetches), but keep safe merge:
+          queryClient.setQueryData(["customer", code], (prev: any) => ({ ...(prev || {}), ...updated }));
           queryClient.invalidateQueries({ queryKey: ["customers"] });
           setIsEditOpen(false);
         }}

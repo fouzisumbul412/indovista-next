@@ -200,14 +200,14 @@ const ShipmentList = () => {
                 onClick={() => handleBulkAction("Update Status")}
                 className="text-sm text-blue-700 hover:text-blue-900 font-medium flex items-center gap-2 px-2 py-1 hover:bg-blue-100 rounded"
               >
-                <RefreshCw className="w-4 h-4" /> Update Status
+                <RefreshCw className="w-4 h-4" /> Referesh Status
               </button>
-              <button
+              {/* <button
                 onClick={() => handleBulkAction("Generate Report")}
                 className="text-sm text-blue-700 hover:text-blue-900 font-medium flex items-center gap-2 px-2 py-1 hover:bg-blue-100 rounded"
               >
                 <FileBarChart className="w-4 h-4" /> Generate Report
-              </button>
+              </button> */}
             </div>
             <button
               onClick={() => setSelectedIds(new Set())}
@@ -245,7 +245,7 @@ const ShipmentList = () => {
               {isLoading && (
                 <tr>
                   <td colSpan={10} className="px-6 py-10 text-center text-gray-500">
-                    Loading…
+                    Loading...
                   </td>
                 </tr>
               )}

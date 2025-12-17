@@ -7,7 +7,15 @@ import { Search, Plus, Pencil, Trash2, Layers, Thermometer, FileText, Download }
 import { Category } from "@/types/category";
 import { CategoryModal } from "@/components/CategoryModal";
 
-type CategoryPayload = Omit<Category, "id"> & { id?: string };
+type CategoryPayload = {
+  id?: string;
+  name: string;
+  hsCode?: string | null;
+  storageType: "AMBIENT" | "CHILLED" | "FROZEN";
+  documents?: string | null;
+  notes?: string | null;
+  temperatureId?: number | null; // ✅
+};
 
 const fetchCategories = async (): Promise<Category[]> => {
   const res = await fetch("/api/categories", { cache: "no-store" });
@@ -82,7 +90,12 @@ const CategoryList = () => {
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     if (!q) return categories;
-    return categories.filter((c) => (c.name || "").toLowerCase().includes(q));
+    return categories.filter((c) => {
+      const name = (c.name || "").toLowerCase();
+      const hs = (c.hsCode || "").toLowerCase();
+      const temp = (c.temperature?.range || c.temperature?.name || "").toLowerCase();
+      return name.includes(q) || hs.includes(q) || temp.includes(q);
+    });
   }, [categories, searchTerm]);
 
   const handleAdd = () => {
@@ -124,7 +137,7 @@ const CategoryList = () => {
             className="flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-500"
           >
             <Download className="w-4 h-4 mr-2" />
-            Export 
+            Export
           </button>
 
           <button
@@ -194,12 +207,12 @@ const CategoryList = () => {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-1">
                       <Thermometer className="w-4 h-4 text-gray-400" />
-                      {c.temperature || "-"}
+                      {c.temperature?.range || c.temperature?.name || "-"}
                     </div>
                   </td>
 
                   <td className="px-6 py-4 capitalize text-gray-700">
-                    {c.storageType.toLowerCase()}
+                    {String(c.storageType || "").toLowerCase()}
                   </td>
 
                   <td className="px-6 py-4">
@@ -210,8 +223,7 @@ const CategoryList = () => {
                   </td>
 
                   <td className="px-6 py-4 text-right">
-                    {/* show always on mobile; hover-to-show on md+ */}
-                    <div className="flex items-center justify-end gap-2 opacity-100  transition-opacity">
+                    <div className="flex items-center justify-end gap-2 opacity-100 transition-opacity">
                       <button
                         type="button"
                         onClick={() => handleEdit(c)}

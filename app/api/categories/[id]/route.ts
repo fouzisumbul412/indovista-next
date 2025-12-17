@@ -11,8 +11,12 @@ function normalizeStorageType(value: any): StorageType {
   return "AMBIENT";
 }
 
-// ✅ Next 15+ may provide params as a Promise in some builds.
-// This works for BOTH cases: params object OR Promise(params).
+function normalizeTemperatureId(value: any): number | null {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 type RouteContext = {
   params: { id: string } | Promise<{ id: string }>;
 };
@@ -30,27 +34,41 @@ export async function PUT(req: Request, context: RouteContext) {
       return NextResponse.json({ message: "Category name is required" }, { status: 400 });
     }
 
+    const temperatureId = normalizeTemperatureId(body.temperatureId);
+
+    if (temperatureId != null) {
+      const exists = await prisma.temperature.findUnique({
+        where: { id: temperatureId },
+        select: { id: true },
+      });
+      if (!exists) {
+        return NextResponse.json({ message: "Invalid temperatureId" }, { status: 400 });
+      }
+    }
+
     const updated = await prisma.category.update({
       where: { id },
       data: {
         name: body.name,
         hsCode: body.hsCode || null,
-        temperature: body.temperature || null,
         storageType: normalizeStorageType(body.storageType),
         documents: body.documents || null,
         notes: body.notes || null,
+        temperatureId,
+      },
+      include: {
+        temperature: {
+          select: { id: true, name: true, range: true, tolerance: true, setPoint: true, unit: true },
+        },
       },
     });
 
     return NextResponse.json(updated);
   } catch (error: any) {
     console.error("[PUT /api/categories/:id] Error:", error);
-
-    // Prisma "Record not found"
     if (error?.code === "P2025") {
       return NextResponse.json({ message: "Category not found" }, { status: 404 });
     }
-
     return NextResponse.json({ message: "Failed to update category" }, { status: 500 });
   }
 }

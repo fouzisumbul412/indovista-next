@@ -124,6 +124,8 @@ model Temperature {
   updatedAt  DateTime @updatedAt
 
   shipments  Shipment[]
+  categories Category[]
+  products   Product[]
 }
 
 enum StorageType {
@@ -136,10 +138,11 @@ model Category {
   id          String      @id                 // e.g. "CAT-001"
   name        String
   hsCode      String?
-  temperature String?
   storageType StorageType @default(AMBIENT)
   documents   String?
   notes       String?
+  temperatureId Int?
+  temperature   Temperature? @relation(fields: [temperatureId], references: [id], onDelete: Restrict)
 
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
@@ -147,7 +150,9 @@ model Category {
    products    Product[]
 
   @@index([name])
+  @@index([temperatureId])
   @@map("categories")
+  
 }
 enum ProductType {
   FROZEN
@@ -160,12 +165,13 @@ model Product {
   type           ProductType
 
   hsCode         String?
-  temperature    String?
   packSize       String?
   shelfLife      String?
   unitsPerCarton Int?
   cartonsPerPallet Int?
   notes          String?
+  temperatureId Int?
+  temperature   Temperature? @relation(fields: [temperatureId], references: [id], onDelete: Restrict)
 
   categoryId     String
   category       Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -176,6 +182,7 @@ model Product {
 
   @@index([name])
   @@index([categoryId])
+  @@index([temperatureId])
   @@map("products")
 
 }
@@ -325,6 +332,8 @@ model Shipment {
   cost          Float              @default(0)
   margin        Float              @default(0)
   invoiceStatus InvoiceStatus      @default(DRAFT)
+  vehicleId  String?
+  vehicle    Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
 
   items         ShipmentItem[]
   documents     ShipmentDocument[]
@@ -337,6 +346,7 @@ model Shipment {
   @@index([reference])
   @@index([mode])
   @@index([direction])
+  @@index([vehicleId])
 }
 
 model ShipmentItem {
@@ -395,4 +405,113 @@ model ShipmentEvent {
 
   @@index([shipmentId])
   @@index([status])
+}
+
+enum VehicleOwnership {
+  OWN
+  RENT
+}
+
+enum FuelType {
+  PETROL
+  DIESEL
+  CNG
+  LPG
+  ELECTRIC
+  OTHER
+}
+
+enum DriverRole {
+  DRIVER
+  OPERATOR
+}
+
+model FreightMode {
+  // Uses same enum values ROAD/SEA/AIR
+  id        TransportMode @id
+  label     String
+  enabled   Boolean       @default(true)
+
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@map("freight_modes")
+}
+
+model Vehicle {
+  id              String           @id // e.g. "VEH-001"
+  name            String
+  number          String           @unique
+  ownership       VehicleOwnership @default(OWN)
+
+  engineType      String?
+  fuel            FuelType         @default(DIESEL)
+  fuelOther       String?
+  fuelCapacity    Float?
+  loadingCapacity Float?
+
+  rcNumber        String?
+  rcExpiry        DateTime?
+  pollutionExpiry DateTime?
+
+  isRegistered    Boolean          @default(true)
+  registeredAt    DateTime?
+
+  docs            String?
+  transportMode   TransportMode
+
+  managingVehicle String?          // manager name / team / vendor
+  medicalSupport  String?          // e.g. "First Aid Kit", "Doctor on call", etc.
+  notes           String?
+
+  drivers         VehicleDriver[]
+  shipments       Shipment[]
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([name])
+  @@index([transportMode])
+  @@map("vehicles")
+}
+
+model Driver {
+  id               String      @id // e.g. "DRV-001"
+  name             String
+  age              Int?
+  role             DriverRole  @default(DRIVER)
+
+  profession       String?
+  education        String?
+  languages        String?     // comma separated: "English, Telugu"
+  licenseNumber    String?
+  contactNumber    String?
+  email            String?
+  address          String?
+
+  transportMode    TransportMode
+  medicalCondition String?
+  notes            String?
+
+  vehicles         VehicleDriver[]
+
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([name])
+  @@index([transportMode])
+  @@map("drivers")
+}
+
+model VehicleDriver {
+  vehicleId  String
+  driverId   String
+  assignedAt DateTime @default(now())
+
+  vehicle    Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver     Driver  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@id([vehicleId, driverId])
+  @@index([driverId])
+  @@map("vehicle_drivers")
 }

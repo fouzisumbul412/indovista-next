@@ -10,6 +10,12 @@ function normalizeType(value: any): ProductType {
   return v === "SPICE" ? "SPICE" : "FROZEN";
 }
 
+function normalizeTemperatureId(value: any): number | null {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 async function generateProductId(): Promise<string> {
   const last = await prisma.product.findFirst({
     orderBy: { createdAt: "desc" },
@@ -28,7 +34,10 @@ async function generateProductId(): Promise<string> {
 export async function GET() {
   try {
     const products = await prisma.product.findMany({
-      include: { category: { select: { id: true, name: true } } },
+      include: {
+        category: { select: { id: true, name: true } },
+        temperature: { select: { id: true, name: true, range: true, tolerance: true, setPoint: true, unit: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -50,13 +59,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "categoryId is required" }, { status: 400 });
     }
 
+    // ✅ fetch category + its temperatureId (for defaulting)
     const category = await prisma.category.findUnique({
       where: { id: body.categoryId },
-      select: { id: true },
+      select: { id: true, temperatureId: true },
     });
 
     if (!category) {
       return NextResponse.json({ message: "Invalid categoryId" }, { status: 400 });
+    }
+
+    // ✅ if product temperatureId not provided -> inherit from category
+    const requestedTempId = normalizeTemperatureId(body.temperatureId);
+    const finalTempId = requestedTempId ?? category.temperatureId ?? null;
+
+    if (finalTempId != null) {
+      const exists = await prisma.temperature.findUnique({
+        where: { id: finalTempId },
+        select: { id: true },
+      });
+      if (!exists) {
+        return NextResponse.json({ message: "Invalid temperatureId" }, { status: 400 });
+      }
     }
 
     const id =
@@ -71,24 +95,23 @@ export async function POST(req: Request) {
         type: normalizeType(body.type),
 
         hsCode: body.hsCode || null,
-        temperature: body.temperature || null,
         packSize: body.packSize || null,
         shelfLife: body.shelfLife || null,
 
         unitsPerCarton:
-          body.unitsPerCarton === "" || body.unitsPerCarton == null
-            ? null
-            : Number(body.unitsPerCarton),
+          body.unitsPerCarton === "" || body.unitsPerCarton == null ? null : Number(body.unitsPerCarton),
         cartonsPerPallet:
-          body.cartonsPerPallet === "" || body.cartonsPerPallet == null
-            ? null
-            : Number(body.cartonsPerPallet),
+          body.cartonsPerPallet === "" || body.cartonsPerPallet == null ? null : Number(body.cartonsPerPallet),
 
         notes: body.notes || null,
 
         categoryId: body.categoryId,
+        temperatureId: finalTempId,
       },
-      include: { category: { select: { id: true, name: true } } },
+      include: {
+        category: { select: { id: true, name: true } },
+        temperature: { select: { id: true, name: true, range: true, tolerance: true, setPoint: true, unit: true } },
+      },
     });
 
     return NextResponse.json(created, { status: 201 });

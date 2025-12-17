@@ -3,21 +3,26 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/Card";
-import {
-  Search,
-  Plus,
-  Snowflake,
-  Leaf,
-  Thermometer,
-  Pencil,
-  Trash2,
-  Download,
-  Upload,
-} from "lucide-react";
+import { Search, Plus, Snowflake, Leaf, Thermometer, Pencil, Trash2, Download, Upload } from "lucide-react";
 import { Product } from "@/types/product";
 import { AddProductModal } from "@/components/AddProductModal";
 
-type ProductPayload = Omit<Product, "id" | "category" | "createdAt" | "updatedAt"> & { id?: string };
+type ProductPayload = {
+  id?: string;
+  name: string;
+  type: "FROZEN" | "SPICE";
+  categoryId: string;
+
+  hsCode?: string | null;
+  temperatureId?: number | null; // ✅
+  packSize?: string | null;
+  shelfLife?: string | null;
+
+  unitsPerCarton?: number | "" | null;
+  cartonsPerPallet?: number | "" | null;
+
+  notes?: string | null;
+};
 
 const fetchProducts = async (): Promise<Product[]> => {
   const res = await fetch("/api/products", { cache: "no-store" });
@@ -107,7 +112,8 @@ const ProductList = () => {
     return products.filter((p) => {
       const matchesSearch =
         (p.name || "").toLowerCase().includes(q) ||
-        (p.hsCode || "").toLowerCase().includes(q);
+        (p.hsCode || "").toLowerCase().includes(q) ||
+        (p.temperature?.range || p.temperature?.name || "").toLowerCase().includes(q);
 
       const matchesType = filterType === "ALL" || p.type === filterType;
       return matchesSearch && matchesType;
@@ -273,9 +279,7 @@ const ProductList = () => {
                     </div>
                   </td>
 
-                  <td className="px-6 py-4 text-gray-600">
-                    {product.category?.name || "-"}
-                  </td>
+                  <td className="px-6 py-4 text-gray-600">{product.category?.name || "-"}</td>
 
                   <td className="px-6 py-4 font-mono text-xs text-gray-600">
                     <span className="bg-gray-100 px-2 py-1 rounded border border-gray-200">
@@ -286,7 +290,7 @@ const ProductList = () => {
                   <td className="px-6 py-4 text-gray-600">
                     <div className="flex items-center gap-1.5">
                       <Thermometer className="w-3.5 h-3.5 text-gray-400" />
-                      {product.temperature || "-"}
+                      {product.temperature?.range || product.temperature?.name || "-"}
                     </div>
                   </td>
 
@@ -294,7 +298,7 @@ const ProductList = () => {
                   <td className="px-6 py-4 text-gray-600">{product.shelfLife || "-"}</td>
 
                   <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2 opacity-100  transition-opacity">
+                    <div className="flex items-center justify-end gap-2 opacity-100 transition-opacity">
                       <button
                         onClick={() => handleEdit(product)}
                         className="p-1.5 hover:bg-blue-50 rounded text-blue-600 transition-colors"

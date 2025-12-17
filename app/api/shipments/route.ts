@@ -40,7 +40,7 @@ async function nextReference(direction: string, commodity: string) {
 }
 
 /**
- * ✅ Resolve a currencyId from:
+ * Resolve a currencyId from:
  * 1) payload financials.currency (code or number)
  * 2) customer.currency (code)
  * 3) fallback "INR"
@@ -106,7 +106,7 @@ export async function POST(req: Request) {
     const cost = Number(financials?.cost ?? 0) || 0;
     const margin = revenue - cost;
 
-    // ✅ FIX: store currencyId (relation), not "currency" string
+    // Store currencyId (relation), not "currency" string
     const currencyId = await resolveCurrencyId(customerId, financials?.currency);
 
     const year = new Date().getFullYear();
@@ -123,8 +123,8 @@ export async function POST(req: Request) {
       try {
         const created = await prisma.shipment.create({
           data: {
-            id: shipmentId, // ✅ SHP-YYYY-001
-            reference: finalRef, // ✅ IMP-FZ-001
+            id: shipmentId, // SHP-YYYY-001
+            reference: finalRef, // IMP-FZ-001
             masterDoc: masterDoc || null,
 
             customerId,
@@ -152,7 +152,7 @@ export async function POST(req: Request) {
             eta: d(eta),
             slaStatus: slaStatus || "ON_TIME",
 
-            // ✅ FIX HERE
+            // calculate and store currency/margins
             currencyId,
             revenue,
             cost,
@@ -192,7 +192,7 @@ export async function POST(req: Request) {
 
     return new NextResponse("Could not generate a unique shipment id/reference", { status: 500 });
   } catch (e: any) {
-    // ✅ Return readable error to frontend instead of blank "Create shipment failed"
+    // Return readable error to frontend instead of blank "Create shipment failed"
     return new NextResponse(e?.message || "Create shipment failed", { status: 500 });
   }
 }
@@ -213,8 +213,8 @@ export async function GET() {
       reference: s.reference,
       masterDoc: s.masterDoc || "",
       customer: s.customer.companyName,
-      origin: { code: s.originPort?.code || "—", city: s.originCity, country: s.originCountry },
-      destination: { code: s.destPort?.code || "—", city: s.destCity, country: s.destCountry },
+      origin: { code: s.originPort?.code || "N/A", city: s.originCity, country: s.originCountry },
+      destination: { code: s.destPort?.code || "N/A", city: s.destCity, country: s.destCountry },
       mode: s.mode,
       direction: s.direction,
       commodity: s.commodity,

@@ -14,6 +14,7 @@ import {
   DollarSign,
   ShieldCheck,
   Settings,
+  Truck,
   LogOut,
   ClipboardList,
   Menu,
@@ -30,6 +31,7 @@ const Sidebar = () => {
 
   const navItems = [
     { icon: LayoutDashboard, label: "Overview", href: "/dashboard" },
+    { icon: Truck, label: "Vehicle", href: "/vehicles" },
     { icon: Ship, label: "Shipments", href: "/shipments" },
     { icon: Users, label: "Customers", href: "/customers" },
     { icon: Package, label: "Products", href: "/products" },

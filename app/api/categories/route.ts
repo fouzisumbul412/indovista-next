@@ -11,6 +11,12 @@ function normalizeStorageType(value: any): StorageType {
   return "AMBIENT";
 }
 
+function normalizeTemperatureId(value: any): number | null {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 async function generateCategoryId(): Promise<string> {
   const last = await prisma.category.findFirst({
     orderBy: { createdAt: "desc" },
@@ -29,8 +35,14 @@ async function generateCategoryId(): Promise<string> {
 export async function GET() {
   try {
     const categories = await prisma.category.findMany({
+      include: {
+        temperature: {
+          select: { id: true, name: true, range: true, tolerance: true, setPoint: true, unit: true },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
+
     return NextResponse.json(categories);
   } catch (error) {
     console.error("[GET /api/categories] Error:", error);
@@ -51,15 +63,32 @@ export async function POST(req: Request) {
         ? body.id.trim()
         : await generateCategoryId();
 
+    const temperatureId = normalizeTemperatureId(body.temperatureId);
+
+    if (temperatureId != null) {
+      const exists = await prisma.temperature.findUnique({
+        where: { id: temperatureId },
+        select: { id: true },
+      });
+      if (!exists) {
+        return NextResponse.json({ message: "Invalid temperatureId" }, { status: 400 });
+      }
+    }
+
     const created = await prisma.category.create({
       data: {
         id,
         name: body.name,
         hsCode: body.hsCode || null,
-        temperature: body.temperature || null,
         storageType: normalizeStorageType(body.storageType),
         documents: body.documents || null,
         notes: body.notes || null,
+        temperatureId: temperatureId,
+      },
+      include: {
+        temperature: {
+          select: { id: true, name: true, range: true, tolerance: true, setPoint: true, unit: true },
+        },
       },
     });
 
