@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Product } from "@/types/product";
 import { Category } from "@/types/category";
 import type { TemperaturePreset } from "@/types/temperature";
+import type { Currency } from "@/types/currency";
 
 type ProductPayload = {
   id?: string;
@@ -18,6 +19,10 @@ type ProductPayload = {
 
   packSize?: string | null;
   shelfLife?: string | null;
+
+  // ✅ Pricing
+  unitPrice?: number | null;
+  currencyCode: string;
 
   unitsPerCarton?: number | null;
   cartonsPerPallet?: number | null;
@@ -44,8 +49,15 @@ const fetchTemperatures = async (): Promise<TemperaturePreset[]> => {
   return res.json();
 };
 
+const fetchCurrencies = async (): Promise<Currency[]> => {
+  const res = await fetch("/api/master-data/currencies", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch currencies");
+  return res.json();
+};
+
 const EMPTY_CATEGORIES: Category[] = [];
 const EMPTY_TEMPS: TemperaturePreset[] = [];
+const EMPTY_CURRENCIES: Currency[] = [];
 
 const EMPTY_FORM: ProductPayload = {
   id: undefined,
@@ -56,6 +68,10 @@ const EMPTY_FORM: ProductPayload = {
   temperatureId: null,
   packSize: "",
   shelfLife: "",
+
+  unitPrice: null,
+  currencyCode: "INR",
+
   unitsPerCarton: null,
   cartonsPerPallet: null,
   notes: "",
@@ -72,6 +88,13 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
   const { data: temps = EMPTY_TEMPS, isLoading: tempsLoading } = useQuery<TemperaturePreset[]>({
     queryKey: ["temperature-presets"],
     queryFn: fetchTemperatures,
+    enabled: isOpen,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: currencies = EMPTY_CURRENCIES, isLoading: curLoading } = useQuery<Currency[]>({
+    queryKey: ["currencies"],
+    queryFn: fetchCurrencies,
     enabled: isOpen,
     staleTime: 5 * 60 * 1000,
   });
@@ -106,18 +129,23 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
         temperatureId: initialData.temperatureId ?? null,
         packSize: initialData.packSize ?? "",
         shelfLife: initialData.shelfLife ?? "",
+
+        unitPrice: initialData.unitPrice ?? null,
+        currencyCode: (initialData.currencyCode ?? "INR").toUpperCase(),
+
         unitsPerCarton: initialData.unitsPerCarton ?? null,
         cartonsPerPallet: initialData.cartonsPerPallet ?? null,
         notes: initialData.notes ?? "",
       });
-      setCustomTemp(true); // editing = explicit temperatureId stored on product
+      setCustomTemp(true);
       return;
     }
 
     setFormData((prev) => ({
       ...EMPTY_FORM,
       categoryId: prev.categoryId || defaultCategoryId || "",
-      temperatureId: null, // "Use category default"
+      temperatureId: null,
+      currencyCode: "INR",
     }));
     setCustomTemp(false);
   }, [isOpen, initialData, defaultCategoryId]);
@@ -209,7 +237,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
                   setFormData((prev) => ({
                     ...prev,
                     categoryId: newCategoryId,
-                    // If user didn't choose a custom temp, keep "Use category default"
                     temperatureId: customTemp ? prev.temperatureId : null,
                   }));
                 }}
@@ -238,7 +265,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
               />
             </div>
 
-            {/* ✅ Temperature dropdown */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Temperature Preset</label>
               <div className="flex items-center gap-2">
@@ -249,7 +275,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
                     const v = e.target.value;
                     if (v === "") {
                       setCustomTemp(false);
-                      setFormData((prev) => ({ ...prev, temperatureId: null })); // inherit from category in backend
+                      setFormData((prev) => ({ ...prev, temperatureId: null }));
                       return;
                     }
                     setCustomTemp(true);
@@ -299,6 +325,41 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
                 value={formData.shelfLife ?? ""}
                 onChange={(e) => setFormData({ ...formData, shelfLife: e.target.value })}
               />
+            </div>
+          </div>
+
+          {/* ✅ Pricing */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Unit Price</label>
+              <input
+                type="number"
+                step="0.01"
+                className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                value={formData.unitPrice ?? ""}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    unitPrice: e.target.value === "" ? null : Number(e.target.value),
+                  }))
+                }
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Currency</label>
+              <select
+                value={formData.currencyCode}
+                onChange={(e) => setFormData((prev) => ({ ...prev, currencyCode: e.target.value }))}
+                className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="INR">{curLoading ? "Loading..." : "INR"}</option>
+                {currencies.map((c) => (
+                  <option key={c.id} value={c.currencyCode}>
+                    {c.currencyCode} — {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

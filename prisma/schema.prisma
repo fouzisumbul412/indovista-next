@@ -111,6 +111,7 @@ model Currency {
   updatedAt     DateTime @updatedAt
   
   shipments Shipment[]
+  products  Product[]
 }
 
 model Temperature {
@@ -170,6 +171,10 @@ model Product {
   unitsPerCarton Int?
   cartonsPerPallet Int?
   notes          String?
+  unitPrice        Float?
+  currencyCode     String      @default("INR")     // ex: INR, USD, AED
+  currency         Currency    @relation(fields: [currencyCode], references: [currencyCode], onDelete: Restrict)
+ 
   temperatureId Int?
   temperature   Temperature? @relation(fields: [temperatureId], references: [id], onDelete: Restrict)
 

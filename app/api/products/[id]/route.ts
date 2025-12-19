@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 type ProductType = "FROZEN" | "SPICE";
+
 function normalizeType(value: any): ProductType {
   const v = String(value || "").toUpperCase();
   return v === "SPICE" ? "SPICE" : "FROZEN";
@@ -13,6 +14,17 @@ function normalizeTemperatureId(value: any): number | null {
   if (value === "" || value == null) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function normalizeUnitPrice(value: any): number | null {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeCurrencyCode(value: any): string {
+  const v = String(value || "").trim().toUpperCase();
+  return v || "INR";
 }
 
 type RouteContext = {
@@ -37,9 +49,7 @@ export async function PUT(req: Request, context: RouteContext) {
       where: { id: body.categoryId },
       select: { id: true, temperatureId: true },
     });
-    if (!category) {
-      return NextResponse.json({ message: "Invalid categoryId" }, { status: 400 });
-    }
+    if (!category) return NextResponse.json({ message: "Invalid categoryId" }, { status: 400 });
 
     const requestedTempId = normalizeTemperatureId(body.temperatureId);
     const finalTempId = requestedTempId ?? category.temperatureId ?? null;
@@ -49,9 +59,17 @@ export async function PUT(req: Request, context: RouteContext) {
         where: { id: finalTempId },
         select: { id: true },
       });
-      if (!exists) {
-        return NextResponse.json({ message: "Invalid temperatureId" }, { status: 400 });
-      }
+      if (!exists) return NextResponse.json({ message: "Invalid temperatureId" }, { status: 400 });
+    }
+
+    // ✅ currency
+    const finalCurrencyCode = normalizeCurrencyCode(body.currencyCode);
+    const currencyExists = await prisma.currency.findUnique({
+      where: { currencyCode: finalCurrencyCode },
+      select: { currencyCode: true },
+    });
+    if (!currencyExists) {
+      return NextResponse.json({ message: "Invalid currencyCode" }, { status: 400 });
     }
 
     const updated = await prisma.product.update({
@@ -64,10 +82,11 @@ export async function PUT(req: Request, context: RouteContext) {
         packSize: body.packSize || null,
         shelfLife: body.shelfLife || null,
 
-        unitsPerCarton:
-          body.unitsPerCarton === "" || body.unitsPerCarton == null ? null : Number(body.unitsPerCarton),
-        cartonsPerPallet:
-          body.cartonsPerPallet === "" || body.cartonsPerPallet == null ? null : Number(body.cartonsPerPallet),
+        unitPrice: normalizeUnitPrice(body.unitPrice),
+        currencyCode: finalCurrencyCode,
+
+        unitsPerCarton: body.unitsPerCarton === "" || body.unitsPerCarton == null ? null : Number(body.unitsPerCarton),
+        cartonsPerPallet: body.cartonsPerPallet === "" || body.cartonsPerPallet == null ? null : Number(body.cartonsPerPallet),
 
         notes: body.notes || null,
 
@@ -77,6 +96,7 @@ export async function PUT(req: Request, context: RouteContext) {
       include: {
         category: { select: { id: true, name: true } },
         temperature: { select: { id: true, name: true, range: true, tolerance: true, setPoint: true, unit: true } },
+        currency: { select: { currencyCode: true, name: true, exchangeRate: true } },
       },
     });
 

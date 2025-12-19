@@ -14,9 +14,13 @@ type ProductPayload = {
   categoryId: string;
 
   hsCode?: string | null;
-  temperatureId?: number | null; // ✅
+  temperatureId?: number | null;
   packSize?: string | null;
   shelfLife?: string | null;
+
+  // ✅ Pricing
+  unitPrice?: number | null;
+  currencyCode: string;
 
   unitsPerCarton?: number | "" | null;
   cartonsPerPallet?: number | "" | null;
@@ -113,6 +117,8 @@ const ProductList = () => {
       const matchesSearch =
         (p.name || "").toLowerCase().includes(q) ||
         (p.hsCode || "").toLowerCase().includes(q) ||
+        (p.currencyCode || "").toLowerCase().includes(q) ||
+        String(p.unitPrice ?? "").toLowerCase().includes(q) ||
         (p.temperature?.range || p.temperature?.name || "").toLowerCase().includes(q);
 
       const matchesType = filterType === "ALL" || p.type === filterType;
@@ -157,7 +163,6 @@ const ProductList = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Products</h1>
@@ -194,13 +199,12 @@ const ProductList = () => {
       </div>
 
       <Card noPadding className="overflow-hidden border border-gray-200">
-        {/* Toolbar */}
         <div className="p-4 border-b border-gray-200 flex flex-col md:flex-row gap-4 justify-between items-center bg-white">
           <div className="relative w-full md:max-w-2xl">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search products or HS codes..."
+              placeholder="Search products, HS codes, price, currency..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -236,13 +240,10 @@ const ProductList = () => {
               </button>
             </div>
 
-            {(isLoading || importMutation.isPending) && (
-              <span className="text-xs text-gray-400 animate-pulse">Loading…</span>
-            )}
+            {(isLoading || importMutation.isPending) && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
           </div>
         </div>
 
-        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-gray-500 uppercase font-semibold text-xs border-b border-gray-200">
@@ -250,6 +251,7 @@ const ProductList = () => {
                 <th className="px-6 py-4">Product Name</th>
                 <th className="px-6 py-4">Category</th>
                 <th className="px-6 py-4">HS Code</th>
+                <th className="px-6 py-4">Price</th>
                 <th className="px-6 py-4">Temperature</th>
                 <th className="px-6 py-4">Pack Size</th>
                 <th className="px-6 py-4">Shelf Life</th>
@@ -260,7 +262,7 @@ const ProductList = () => {
             <tbody className="divide-y divide-gray-100">
               {!isLoading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                     No products found.
                   </td>
                 </tr>
@@ -285,6 +287,14 @@ const ProductList = () => {
                     <span className="bg-gray-100 px-2 py-1 rounded border border-gray-200">
                       {product.hsCode || "-"}
                     </span>
+                  </td>
+
+                  <td className="px-6 py-4 text-gray-600">
+                    {product.unitPrice == null ? "-" : (
+                      <span className="bg-gray-100 px-2 py-1 rounded border border-gray-200">
+                        {product.currencyCode} {Number(product.unitPrice).toFixed(2)}
+                      </span>
+                    )}
                   </td>
 
                   <td className="px-6 py-4 text-gray-600">

@@ -16,6 +16,17 @@ function normalizeTemperatureId(value: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function normalizeUnitPrice(value: any): number | null {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeCurrencyCode(value: any): string {
+  const v = String(value || "").trim().toUpperCase();
+  return v || "INR";
+}
+
 async function generateProductId(): Promise<string> {
   const last = await prisma.product.findFirst({
     orderBy: { createdAt: "desc" },
@@ -37,6 +48,7 @@ export async function GET() {
       include: {
         category: { select: { id: true, name: true } },
         temperature: { select: { id: true, name: true, range: true, tolerance: true, setPoint: true, unit: true } },
+        currency: { select: { currencyCode: true, name: true, exchangeRate: true } },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -59,7 +71,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "categoryId is required" }, { status: 400 });
     }
 
-    // ✅ fetch category + its temperatureId (for defaulting)
+    // ✅ category default temperature
     const category = await prisma.category.findUnique({
       where: { id: body.categoryId },
       select: { id: true, temperatureId: true },
@@ -69,7 +81,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Invalid categoryId" }, { status: 400 });
     }
 
-    // ✅ if product temperatureId not provided -> inherit from category
     const requestedTempId = normalizeTemperatureId(body.temperatureId);
     const finalTempId = requestedTempId ?? category.temperatureId ?? null;
 
@@ -78,15 +89,21 @@ export async function POST(req: Request) {
         where: { id: finalTempId },
         select: { id: true },
       });
-      if (!exists) {
-        return NextResponse.json({ message: "Invalid temperatureId" }, { status: 400 });
-      }
+      if (!exists) return NextResponse.json({ message: "Invalid temperatureId" }, { status: 400 });
+    }
+
+    // ✅ currency
+    const finalCurrencyCode = normalizeCurrencyCode(body.currencyCode);
+    const currencyExists = await prisma.currency.findUnique({
+      where: { currencyCode: finalCurrencyCode },
+      select: { currencyCode: true },
+    });
+    if (!currencyExists) {
+      return NextResponse.json({ message: "Invalid currencyCode" }, { status: 400 });
     }
 
     const id =
-      typeof body.id === "string" && body.id.trim()
-        ? body.id.trim()
-        : await generateProductId();
+      typeof body.id === "string" && body.id.trim() ? body.id.trim() : await generateProductId();
 
     const created = await prisma.product.create({
       data: {
@@ -98,10 +115,11 @@ export async function POST(req: Request) {
         packSize: body.packSize || null,
         shelfLife: body.shelfLife || null,
 
-        unitsPerCarton:
-          body.unitsPerCarton === "" || body.unitsPerCarton == null ? null : Number(body.unitsPerCarton),
-        cartonsPerPallet:
-          body.cartonsPerPallet === "" || body.cartonsPerPallet == null ? null : Number(body.cartonsPerPallet),
+        unitPrice: normalizeUnitPrice(body.unitPrice),
+        currencyCode: finalCurrencyCode,
+
+        unitsPerCarton: body.unitsPerCarton === "" || body.unitsPerCarton == null ? null : Number(body.unitsPerCarton),
+        cartonsPerPallet: body.cartonsPerPallet === "" || body.cartonsPerPallet == null ? null : Number(body.cartonsPerPallet),
 
         notes: body.notes || null,
 
@@ -111,6 +129,7 @@ export async function POST(req: Request) {
       include: {
         category: { select: { id: true, name: true } },
         temperature: { select: { id: true, name: true, range: true, tolerance: true, setPoint: true, unit: true } },
+        currency: { select: { currencyCode: true, name: true, exchangeRate: true } },
       },
     });
 
