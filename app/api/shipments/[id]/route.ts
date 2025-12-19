@@ -2,10 +2,25 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const clean = (v: any) => String(v ?? "").trim();
 const upper = (v: any, fallback: string) => clean(v || fallback).toUpperCase();
 const parseDate = (v?: string | null) => (v ? new Date(v) : null);
+
+const noStoreHeaders = { "Cache-Control": "no-store, max-age=0" };
+const normalizeParam = (v: string) => clean(decodeURIComponent(v || ""));
+
+type RouteCtx = {
+  // Next.js 15: params is Promise
+  params: Promise<{ id: string }> | { id: string };
+};
+
+async function getParamId(ctx: RouteCtx) {
+  const p: any = ctx?.params;
+  const obj = typeof p?.then === "function" ? await p : p; // ✅ unwrap Promise if needed
+  return normalizeParam(obj?.id || "");
+}
 
 const fallbackCode = (city?: string | null) => {
   const c = clean(city);
@@ -66,7 +81,9 @@ async function resolveCurrencyId(customerId: string, payloadCurrency: any) {
   return row.id;
 }
 
-async function findShipmentRecord(idOrRef: string) {
+async function findShipmentRecord(idOrRefRaw: string) {
+  const idOrRef = normalizeParam(idOrRefRaw);
+
   // 1) Try as String id
   try {
     const s = await prisma.shipment.findUnique({
@@ -117,23 +134,24 @@ async function shapeShipment(idOrRef: string) {
   const s: any = await findShipmentRecord(idOrRef);
   if (!s) return null;
 
-  const [originPort, destPort, incoterm, containerType, temperature, currency, vehicle, driver] = await Promise.all([
-    s.originPortId ? prisma.port.findUnique({ where: { id: s.originPortId } }) : Promise.resolve(null),
-    s.destPortId ? prisma.port.findUnique({ where: { id: s.destPortId } }) : Promise.resolve(null),
-    s.incotermId ? prisma.incoterm.findUnique({ where: { id: s.incotermId } }) : Promise.resolve(null),
-    s.containerTypeId ? prisma.containerType.findUnique({ where: { id: s.containerTypeId } }) : Promise.resolve(null),
-    s.temperatureId ? prisma.temperature.findUnique({ where: { id: s.temperatureId } }) : Promise.resolve(null),
-    s.currencyId ? prisma.currency.findUnique({ where: { id: s.currencyId } }) : Promise.resolve(null),
+  const [originPort, destPort, incoterm, containerType, temperature, currency, vehicle, driver] =
+    await Promise.all([
+      s.originPortId ? prisma.port.findUnique({ where: { id: s.originPortId } }) : Promise.resolve(null),
+      s.destPortId ? prisma.port.findUnique({ where: { id: s.destPortId } }) : Promise.resolve(null),
+      s.incotermId ? prisma.incoterm.findUnique({ where: { id: s.incotermId } }) : Promise.resolve(null),
+      s.containerTypeId ? prisma.containerType.findUnique({ where: { id: s.containerTypeId } }) : Promise.resolve(null),
+      s.temperatureId ? prisma.temperature.findUnique({ where: { id: s.temperatureId } }) : Promise.resolve(null),
+      s.currencyId ? prisma.currency.findUnique({ where: { id: s.currencyId } }) : Promise.resolve(null),
 
-    s.vehicleId
-      ? prisma.vehicle.findUnique({
-          where: { id: s.vehicleId },
-          include: { drivers: { include: { driver: true } } },
-        })
-      : Promise.resolve(null),
+      s.vehicleId
+        ? prisma.vehicle.findUnique({
+            where: { id: s.vehicleId },
+            include: { drivers: { include: { driver: true } } },
+          })
+        : Promise.resolve(null),
 
-    s.driverId ? prisma.driver.findUnique({ where: { id: s.driverId } }) : Promise.resolve(null),
-  ]);
+      s.driverId ? prisma.driver.findUnique({ where: { id: s.driverId } }) : Promise.resolve(null),
+    ]);
 
   const originCode = (originPort as any)?.code || fallbackCode(s.originCity);
   const destCode = (destPort as any)?.code || fallbackCode(s.destCity);
@@ -221,7 +239,7 @@ async function shapeShipment(idOrRef: string) {
 
     cargo: (s.items || []).map((it: any) => ({
       id: it.id,
-      productId: it.productId, // ✅ important for editing
+      productId: it.productId,
       productName: it.product?.name || "Product",
       hsCode: it.product?.hsCode || "",
       quantity: it.quantity,
@@ -262,33 +280,31 @@ async function shapeShipment(idOrRef: string) {
   };
 }
 
-export async function GET(_: Request, ctx: { params: { id: string } }) {
+export async function GET(_: Request, ctx: RouteCtx) {
   try {
-    const shipment = await shapeShipment(ctx.params.id);
+    const idOrRef = await getParamId(ctx);
+    const shipment = await shapeShipment(idOrRef);
     if (!shipment) return new NextResponse("Not found", { status: 404 });
-    return NextResponse.json(shipment);
+    return NextResponse.json(shipment, { headers: noStoreHeaders });
   } catch (e: any) {
     console.error("GET /api/shipments/[id] failed:", e);
     return NextResponse.json({ message: e?.message || "Internal Server Error" }, { status: 500 });
   }
 }
 
-export async function PATCH(req: Request, ctx: { params: { id: string } }) {
-  const idOrRef = ctx.params.id;
-
+export async function PATCH(req: Request, ctx: RouteCtx) {
   try {
-    const body = await req.json();
+    const idOrRef = await getParamId(ctx);
 
+    const body = await req.json();
     const existing: any = await findShipmentRecord(idOrRef);
     if (!existing) return new NextResponse("Not found", { status: 404 });
 
     const id = existing.id;
 
-    // effective values for validations
     const nextMode = body.mode ? upper(body.mode, existing.mode) : existing.mode;
     const nextCustomerId = body.customerId ? clean(body.customerId) : existing.customerId;
 
-    // validate vehicle/driver if provided
     if (body.vehicleId !== undefined && body.vehicleId) {
       const v = await prisma.vehicle.findUnique({ where: { id: clean(body.vehicleId) } });
       if (!v) return new NextResponse("Invalid vehicleId", { status: 400 });
@@ -306,7 +322,6 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
 
     const data: any = {};
 
-    // basic fields
     if (body.masterDoc !== undefined) data.masterDoc = clean(body.masterDoc) ? clean(body.masterDoc) : null;
     if (body.direction !== undefined) data.direction = upper(body.direction, existing.direction);
     if (body.mode !== undefined) data.mode = upper(body.mode, existing.mode);
@@ -314,14 +329,10 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
 
     if (body.customerId !== undefined) data.customerId = clean(body.customerId);
 
-    if (body.incotermId !== undefined)
-      data.incotermId = body.incotermId ? Number(body.incotermId) : null;
-    if (body.containerTypeId !== undefined)
-      data.containerTypeId = body.containerTypeId ? Number(body.containerTypeId) : null;
-    if (body.temperatureId !== undefined)
-      data.temperatureId = body.temperatureId ? Number(body.temperatureId) : null;
+    if (body.incotermId !== undefined) data.incotermId = body.incotermId ? Number(body.incotermId) : null;
+    if (body.containerTypeId !== undefined) data.containerTypeId = body.containerTypeId ? Number(body.containerTypeId) : null;
+    if (body.temperatureId !== undefined) data.temperatureId = body.temperatureId ? Number(body.temperatureId) : null;
 
-    // origin/destination (support nested or flat)
     if (body.origin) {
       if (body.origin.city !== undefined) data.originCity = clean(body.origin.city);
       if (body.origin.country !== undefined) data.originCountry = clean(body.origin.country);
@@ -346,7 +357,6 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
       if (body.destPortId !== undefined) data.destPortId = body.destPortId ? Number(body.destPortId) : null;
     }
 
-    // status/dates/sla
     const nextStatus = body.status !== undefined ? upper(body.status, existing.status) : null;
     const statusChanged = nextStatus != null && nextStatus !== existing.status;
 
@@ -355,29 +365,25 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     if (body.eta !== undefined) data.eta = parseDate(body.eta);
     if (body.slaStatus !== undefined) data.slaStatus = upper(body.slaStatus, existing.slaStatus);
 
-    // vehicle/driver assignment
     if (body.vehicleId !== undefined) data.vehicleId = body.vehicleId ? clean(body.vehicleId) : null;
     if (body.driverId !== undefined) data.driverId = body.driverId ? clean(body.driverId) : null;
 
-    // financials
     if (body.financials) {
       const revenue = Number(body.financials.revenue ?? 0) || 0;
       const cost = Number(body.financials.cost ?? 0) || 0;
-      const margin = revenue - cost;
 
       const currencyId = await resolveCurrencyId(nextCustomerId, body.financials.currency);
 
       data.currencyId = currencyId;
       data.revenue = revenue;
       data.cost = cost;
-      data.margin = margin;
+      data.margin = revenue - cost;
 
       if (body.financials.invoiceStatus !== undefined) {
         data.invoiceStatus = upper(body.financials.invoiceStatus, existing.invoiceStatus || "DRAFT");
       }
     }
 
-    // cargo replace
     if (Array.isArray(body.items)) {
       data.items = {
         deleteMany: {},
@@ -393,7 +399,6 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
       };
     }
 
-    // timeline event on status change
     if (statusChanged) {
       data.events = {
         create: {
@@ -405,28 +410,25 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
       };
     }
 
-    await prisma.shipment.update({
-      where: { id },
-      data,
-    });
+    await prisma.shipment.update({ where: { id }, data });
 
     const shipment = await shapeShipment(String(id));
-    return NextResponse.json(shipment);
+    return NextResponse.json(shipment, { headers: noStoreHeaders });
   } catch (e: any) {
     console.error("PATCH /api/shipments/[id] failed:", e);
     return NextResponse.json({ message: e?.message || "Internal Server Error" }, { status: 500 });
   }
 }
 
-export async function DELETE(_: Request, ctx: { params: { id: string } }) {
-  const idOrRef = ctx.params.id;
-
+export async function DELETE(_: Request, ctx: RouteCtx) {
   try {
+    const idOrRef = await getParamId(ctx);
+
     const existing: any = await findShipmentRecord(idOrRef);
     if (!existing) return new NextResponse("Not found", { status: 404 });
 
     await prisma.shipment.delete({ where: { id: existing.id } });
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, { headers: noStoreHeaders });
   } catch (e: any) {
     console.error("DELETE /api/shipments/[id] failed:", e);
     return NextResponse.json({ message: e?.message || "Failed to delete shipment" }, { status: 500 });

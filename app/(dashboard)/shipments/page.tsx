@@ -287,14 +287,14 @@ const matchesReference =
                 <table className="w-full text-left text-sm">
                   <thead className="bg-gray-50 text-gray-500 uppercase font-bold text-xs border-b border-gray-200">
                     <tr>
-                      <th className="px-6 py-4 w-10">
+                      {/* <th className="px-6 py-4 w-10">
                         <input
                           type="checkbox"
                           className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           onChange={handleSelectAll}
                           checked={filtered.length > 0 && selectedIds.size === filtered.length}
                         />
-                      </th>
+                      </th> */}
                       <th className="px-6 py-4 font-bold">Reference</th>
                       <th className="px-6 py-4 font-bold">Customer</th>
                       <th className="px-6 py-4 font-bold">Route</th>
@@ -315,14 +315,14 @@ const matchesReference =
                           selectedIds.has(shipment.id) ? "bg-blue-50/30" : ""
                         }`}
                       >
-                        <td className="px-6 py-4">
+                        {/* <td className="px-6 py-4">
                           <input
                             type="checkbox"
                             className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             checked={selectedIds.has(shipment.id)}
                             onChange={() => handleSelectRow(shipment.id)}
                           />
-                        </td>
+                        </td> */}
 
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
