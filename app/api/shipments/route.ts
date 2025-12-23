@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 const clean = (v: any) => String(v ?? "").trim();
 const upper = (v: any, fallback: string) => clean(v || fallback).toUpperCase();
 const d = (v: any) => (v ? new Date(v) : null);
+const noStoreHeaders = { "Cache-Control": "no-store, max-age=0" };
 
 const pad3 = (n: number) => String(n).padStart(3, "0");
 
@@ -316,6 +317,8 @@ export async function GET() {
         },
       ])
     );
+
+    
 
     return NextResponse.json(
       rows.map((s) => ({

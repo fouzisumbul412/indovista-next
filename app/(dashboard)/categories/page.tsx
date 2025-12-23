@@ -175,7 +175,7 @@ const CategoryList = () => {
                 <th className="px-6 py-4">HS Code</th>
                 <th className="px-6 py-4">Temperature</th>
                 <th className="px-6 py-4">Storage Type</th>
-                <th className="px-6 py-4">Documents</th>
+                {/* <th className="px-6 py-4">Documents</th> */}
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -215,12 +215,12 @@ const CategoryList = () => {
                     {String(c.storageType || "").toLowerCase()}
                   </td>
 
-                  <td className="px-6 py-4">
+                  {/* <td className="px-6 py-4">
                     <div className="flex items-center gap-1 text-gray-600">
                       <FileText className="w-4 h-4 text-gray-400" />
                       <span className="truncate max-w-[160px]">{c.documents || "-"}</span>
                     </div>
-                  </td>
+                  </td> */}
 
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2 opacity-100 transition-opacity">

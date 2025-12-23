@@ -170,7 +170,7 @@ export const CategoryModal: React.FC<Props> = ({ isOpen, onClose, onSave, initia
             </select>
           </div>
 
-          <div>
+          {/* <div>
             <label className="block text-sm font-semibold mb-1 flex items-center gap-1">
               Required Documents <FileText className="w-4 h-4 text-gray-400" />
             </label>
@@ -181,7 +181,7 @@ export const CategoryModal: React.FC<Props> = ({ isOpen, onClose, onSave, initia
               onChange={(e) => update("documents", e.target.value)}
               className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
             />
-          </div>
+          </div> */}
 
           <div>
             <label className="block text-sm font-semibold mb-1">Notes</label>

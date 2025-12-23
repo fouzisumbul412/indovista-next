@@ -91,7 +91,8 @@ const OverviewTab = ({ shipment }: { shipment: Shipment }) => (
           <span className="text-sm text-gray-500">Temperature Req</span>
           <span className="text-sm font-medium flex items-center gap-1 text-blue-600">
             <Thermometer className="w-4 h-4" />
-            {shipment.temperature?.setPoint ?? 0} deg{shipment.temperature?.unit ?? "C"} ({shipment.temperature?.range ?? "Ambient / N/A"})
+            {/* {shipment.temperature?.setPoint ?? 0} deg{shipment.temperature?.unit ?? "C"}  */}
+            {shipment.temperature?.range ?? "Ambient / N/A"}
           </span>
         </div>
 

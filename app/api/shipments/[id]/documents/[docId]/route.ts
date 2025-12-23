@@ -16,14 +16,24 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const { id: shipmentId, docId } = await params;
     const body = await req.json();
 
+    const existing = await prisma.shipmentDocument.findFirst({
+      where: { id: docId, shipmentId },
+      select: { id: true },
+    });
+    if (!existing) return new NextResponse("Not found", { status: 404 });
+
     const updated = await prisma.shipmentDocument.update({
       where: { id: docId },
       data: {
-        shipmentId, // keep correct
         name: body.name !== undefined ? String(body.name || "Document") : undefined,
         type: body.type !== undefined ? body.type : undefined,
         status: body.status !== undefined ? body.status : undefined,
-        expiryDate: body.expiryDate !== undefined ? (body.expiryDate ? new Date(body.expiryDate) : null) : undefined,
+        expiryDate:
+          body.expiryDate !== undefined
+            ? body.expiryDate
+              ? new Date(body.expiryDate)
+              : null
+            : undefined,
       },
       select: { id: true },
     });
@@ -38,17 +48,18 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   try {
     const { id: shipmentId, docId } = await params;
 
-    const doc = await prisma.shipmentDocument.findUnique({
-      where: { id: docId },
+    const doc = await prisma.shipmentDocument.findFirst({
+      where: { id: docId, shipmentId },
       select: { fileUrl: true },
     });
+    if (!doc) return new NextResponse("Not found", { status: 404 });
 
     await prisma.shipmentDocument.delete({ where: { id: docId } });
 
-    // optional file delete (only if inside shipment folder)
-    if (doc?.fileUrl) {
-      const abs = path.join(process.cwd(), "public", doc.fileUrl);
-      // Ensure it belongs to this shipment folder
+    if (doc.fileUrl) {
+      const rel = String(doc.fileUrl).replace(/^\//, ""); // ✅ important
+      const abs = path.join(process.cwd(), "public", rel);
+
       const safeRoot = path.join(process.cwd(), "public", "uploads", "shipments", shipmentId);
       if (abs.startsWith(safeRoot)) {
         try {
