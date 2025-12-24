@@ -229,38 +229,39 @@ export default function QuoteList() {
                       <StatusBadge status={quote.status as any} />
                     </td>
 
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {/* PDF */}
-                        <a
-                          href={`/api/quotes/${encodeURIComponent(quote.id)}/pdf`}
-                          target="_blank"
-                          className="p-1.5 hover:bg-gray-200 rounded text-gray-500 hover:text-gray-900"
-                          title="Download PDF"
-                          rel="noreferrer"
-                        >
-                          <Download className="w-4 h-4" />
-                        </a>
+                  <td className="px-6 py-4 text-right">
+  <div className="flex items-center justify-end gap-2">
+    {/* PDF */}
+    <a
+      href={`/api/quotes/${encodeURIComponent(quote.id)}/pdf`}
+      target="_blank"
+      className="p-1.5 hover:bg-gray-200 rounded text-gray-500 hover:text-gray-900"
+      title="Download PDF"
+      rel="noreferrer"
+    >
+      <Download className="w-4 h-4" />
+    </a>
 
-                        {/* Edit */}
-                        <button
-                          onClick={() => handleEdit(quote.id)}
-                          className="p-1.5 hover:bg-gray-200 rounded text-gray-500 hover:text-blue-600"
-                          title="Edit"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
+    {/* Edit */}
+    <button
+      onClick={() => handleEdit(quote.id)}
+      className="p-1.5 hover:bg-gray-200 rounded hover:text-gray-500 text-blue-600"
+      title="Edit"
+    >
+      <Pencil className="w-4 h-4" />
+    </button>
 
-                        {/* Delete */}
-                        <button
-                          onClick={() => handleDelete(quote.id)}
-                          className="p-1.5 hover:bg-red-100 rounded text-gray-500 hover:text-red-600"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+    {/* Delete */}
+    <button
+      onClick={() => handleDelete(quote.id)}
+      className="p-1.5 hover:bg-red-100 rounded hover:text-gray-500 text-red-600"
+      title="Delete"
+    >
+      <Trash2 className="w-4 h-4" />
+    </button>
+  </div>
+</td>
+
                   </tr>
                 ))}
             </tbody>

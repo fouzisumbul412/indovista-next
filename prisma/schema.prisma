@@ -347,7 +347,7 @@ model Shipment {
   documents     ShipmentDocument[]
   events        ShipmentEvent[]
   quotes        Quote[]
-
+  shipmentInvoice ShipmentInvoice[]
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
@@ -638,4 +638,33 @@ model QuoteCharge {
 
   @@index([quoteId])
   @@map("quote_charges")
+}
+
+model ShipmentInvoice {
+  shipmentId     String   @id
+  shipment       Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  invoiceNumber  String
+  customerName   String
+  customerGstin  String?  @default("")
+  placeOfSupply  String?  @default("")
+
+  issueDate      DateTime
+  dueDate        DateTime
+
+  currency       String   @default("INR")
+  status         String   @default("DRAFT")
+  tdsRate        Float    @default(0)
+
+  items          Json
+
+  subtotal       Float    @default(0)
+  totalTax       Float    @default(0)
+  tdsAmount      Float    @default(0)
+  amount         Float    @default(0)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([invoiceNumber])
 }
