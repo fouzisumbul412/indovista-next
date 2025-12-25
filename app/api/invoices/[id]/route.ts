@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest,NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { recalcShipmentInvoiceStatus } from "@/lib/financials";
 
@@ -97,9 +97,12 @@ function toDetail(inv: any) {
   };
 }
 
-export async function GET(_req: Request, ctx: { params: { id: string } }) {
-  try {
-    const id = String(ctx.params.id || "").trim();
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+)  {
+   try {
+    const { id } = await params;
 
     const inv = await prisma.shipmentInvoice.findUnique({
       where: { id },
@@ -126,9 +129,12 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
   }
 }
 
-export async function PUT(req: Request, ctx: { params: { id: string } }) {
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const id = String(ctx.params.id || "").trim();
+    const { id } = await params;
     const body = await req.json();
 
     const issueDate = safeDate(body.issueDate);
@@ -187,10 +193,12 @@ export async function PUT(req: Request, ctx: { params: { id: string } }) {
   }
 }
 
-export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const id = String(ctx.params.id || "").trim();
-
+    const { id } = await params;
     const inv = await prisma.shipmentInvoice.findUnique({
       where: { id },
       select: { id: true, shipmentId: true, payments: { select: { id: true } } },

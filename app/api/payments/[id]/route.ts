@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import {  NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { recalcInvoicePaidStatus, recalcShipmentInvoiceStatus } from "@/lib/financials";
 
@@ -14,9 +14,12 @@ function safeDate(input: any): Date {
   return Number.isNaN(d.getTime()) ? new Date() : d;
 }
 
-export async function PUT(req: Request, ctx: { params: { id: string } }) {
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const id = String(ctx.params.id || "").trim();
+    const { id } = await params;
     const body = await req.json();
 
     const amount = Number(body.amount);
@@ -67,9 +70,12 @@ export async function PUT(req: Request, ctx: { params: { id: string } }) {
   }
 }
 
-export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const id = String(ctx.params.id || "").trim();
+    const { id } = await params;
 
     const existing = await prisma.payment.findUnique({
       where: { id },

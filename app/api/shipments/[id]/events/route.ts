@@ -48,7 +48,7 @@ export async function GET(_req: Request, { params }: Ctx) {
     })
     
 
-    return NextResponse.json(events), { headers: noStoreHeaders };
+    return NextResponse.json(events, { headers: noStoreHeaders });
   } catch (e: any) {
     return new NextResponse(e?.message || "Failed to fetch events", { status: 500 });
   }

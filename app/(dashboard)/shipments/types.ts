@@ -193,3 +193,15 @@ export type Payment = {
   notes?: string | null;
   status: "PENDING" | "COMPLETED" | "FAILED";
 };
+interface ShipmentMini {
+  id: string;
+  reference: string;
+  customer: string;
+}
+
+interface AddDocumentModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onAdd: (doc: ShipmentDocument) => void;
+  shipments: ShipmentMini[]; // ✅ real data
+}

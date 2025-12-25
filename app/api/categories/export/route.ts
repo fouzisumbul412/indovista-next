@@ -14,7 +14,7 @@ export async function GET() {
       ID: c.id,
       Name: c.name,
       "HS Code": c.hsCode || "",
-      Temperature: c.temperature || "",
+      Temperature: c.temperatureId || "",
       "Storage Type": c.storageType,
       Documents: c.documents || "",
       Notes: c.notes || "",

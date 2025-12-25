@@ -1,7 +1,7 @@
 "use client";
 import React from 'react';
 import { Card } from '../components/ui/Card';
-import { KPIS, CHART_DATA_VOLUME, CHART_DATA_MODE, MOCK_SHIPMENTS } from '../data/mock';
+import { KPIS, CHART_DATA_VOLUME, CHART_DATA_MODE} from '../data/mock';
 import { Metric } from '../types';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -32,7 +32,7 @@ const KPIWidget: React.FC<{ kpi: Metric }> = ({ kpi }) => {
 };
 
 const Dashboard = () => {
-  const exceptions = MOCK_SHIPMENTS.filter(s => s.status === 'EXCEPTION' || s.slaStatus === 'BREACHED' || s.slaStatus === 'AT_RISK');
+  //const exceptions = MOCK_SHIPMENTS.filter(s => s.status === 'EXCEPTION' || s.slaStatus === 'BREACHED' || s.slaStatus === 'AT_RISK');
 
   return (
     <div className="space-y-6">
@@ -122,7 +122,7 @@ const Dashboard = () => {
               <th className="px-6 py-3">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          {/* <tbody className="divide-y divide-gray-100">
             {exceptions.map(shipment => (
               <tr key={shipment.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 font-medium text-gray-900">
@@ -146,7 +146,7 @@ const Dashboard = () => {
             {exceptions.length === 0 && (
                <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No active exceptions. Great job!</td></tr>
             )}
-          </tbody>
+          </tbody> */}
         </table>
       </Card>
     </div>
