@@ -1,7 +1,7 @@
+// app/api/shipments/[id]/documents/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import fs from "node:fs/promises";
-import path from "node:path";
+import { uploadShipmentDocument } from "@/lib/uploadShipmentDocument";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -87,39 +87,17 @@ export async function POST(req: Request, ctx: any) {
     const name = String(form.get("name") || file.name || "Document");
     const type = String(form.get("type") || "OTHER");
     const status = String(form.get("status") || "DRAFT");
+
     const expiryDateRaw = form.get("expiryDate");
     const expiryDate =
       expiryDateRaw && String(expiryDateRaw).trim()
         ? new Date(String(expiryDateRaw))
         : null;
 
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const mime = file.type || null;
+    // ✅ Upload to Vercel Blob (NO filesystem)
+    const uploaded = await uploadShipmentDocument(shipmentId, file);
 
-    // store file
-    const uploadsDir = path.join(
-      process.cwd(),
-      "public",
-      "uploads",
-      "shipments",
-      shipmentId
-    );
-    await fs.mkdir(uploadsDir, { recursive: true });
-
-    const original = file.name || "document";
-    const ext = path.extname(original).slice(0, 10);
-    const base = path
-      .basename(original, path.extname(original))
-      .replace(/[^a-zA-Z0-9-_]+/g, "_")
-      .slice(0, 80);
-
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filename = `${stamp}_${base}${ext || ""}`;
-
-    await fs.writeFile(path.join(uploadsDir, filename), bytes);
-
-    const url = `/uploads/shipments/${shipmentId}/${filename}`;
-
+    // ✅ Save DB record
     const created = await prisma.shipmentDocument.create({
       data: {
         shipmentId,
@@ -127,9 +105,9 @@ export async function POST(req: Request, ctx: any) {
         type: type as any,
         status: status as any,
         expiryDate,
-        fileUrl: url,
-        mimeType: mime,
-        fileSize: bytes.length,
+        fileUrl: uploaded.fileUrl,
+        mimeType: uploaded.mimeType,
+        fileSize: uploaded.fileSize,
       },
       select: { id: true },
     });

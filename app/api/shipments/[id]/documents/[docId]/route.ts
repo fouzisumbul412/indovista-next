@@ -6,15 +6,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { deleteShipmentDocument } from "@/lib/deleteShipmentDocument";
 
+type Ctx = {
+  params: Promise<{ id: string; docId: string }>;
+};
+
 /* =========================
    UPDATE DOCUMENT METADATA
    ========================= */
-export async function PATCH(
-  req: NextRequest,
-  ctx: RouteContext<"/api/shipments/[id]/documents/[docId]">
-) {
+export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
-    const { id: shipmentId, docId } = await ctx.params; // ✅ params is async in Next 15+
+    const { id: shipmentId, docId } = await ctx.params;
     const body = await req.json();
 
     const existing = await prisma.shipmentDocument.findFirst({
@@ -22,9 +23,7 @@ export async function PATCH(
       select: { id: true },
     });
 
-    if (!existing) {
-      return new NextResponse("Not found", { status: 404 });
-    }
+    if (!existing) return new NextResponse("Not found", { status: 404 });
 
     const updated = await prisma.shipmentDocument.update({
       where: { id: docId },
@@ -49,27 +48,20 @@ export async function PATCH(
 }
 
 /* =========================
-   DELETE DOCUMENT (BLOB + FS SAFE)
+   DELETE DOCUMENT (BLOB SAFE)
    ========================= */
-export async function DELETE(
-  _req: NextRequest,
-  ctx: RouteContext<"/api/shipments/[id]/documents/[docId]">
-) {
+export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
-    const { id: shipmentId, docId } = await ctx.params; // ✅ await params
+    const { id: shipmentId, docId } = await ctx.params;
 
     const doc = await prisma.shipmentDocument.findFirst({
       where: { id: docId, shipmentId },
       select: { fileUrl: true },
     });
 
-    if (!doc) {
-      return new NextResponse("Not found", { status: 404 });
-    }
+    if (!doc) return new NextResponse("Not found", { status: 404 });
 
-    await prisma.shipmentDocument.delete({
-      where: { id: docId },
-    });
+    await prisma.shipmentDocument.delete({ where: { id: docId } });
 
     if (doc.fileUrl) {
       await deleteShipmentDocument(shipmentId, doc.fileUrl);

@@ -1,3 +1,4 @@
+// lib/deleteShipmentDocument.ts
 import fs from "fs/promises";
 import path from "path";
 
@@ -15,20 +16,14 @@ export async function deleteShipmentDocument(shipmentId: string, fileUrl: string
     return;
   }
 
-  // ✅ Never do filesystem deletes on Vercel
+  // Never do filesystem deletes on Vercel
   if (isVercel()) return;
 
-  // VPS/local filesystem
+  // (VPS/local path — not used on Vercel)
   if (!fileUrl.startsWith("/uploads/")) return;
 
   const abs = path.join(process.cwd(), "public", fileUrl);
-  const safeRoot = path.join(
-    process.cwd(),
-    "public",
-    "uploads",
-    "shipments",
-    shipmentId
-  );
+  const safeRoot = path.join(process.cwd(), "public", "uploads", "shipments", shipmentId);
 
   if (!abs.startsWith(safeRoot)) return;
 

@@ -10,7 +10,6 @@ export async function uploadShipmentDocument(shipmentId: string, file: File) {
   if (!ALLOWED.includes(mime)) throw new Error("Only pdf/png/jpg allowed");
 
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    // ✅ This prevents any fs.mkdir fallback ever
     throw new Error(
       "BLOB_READ_WRITE_TOKEN is missing at runtime on Vercel. Add it in Vercel Project → Settings → Environment Variables (Production/Preview) and redeploy."
     );
