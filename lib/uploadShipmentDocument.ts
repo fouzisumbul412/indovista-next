@@ -7,21 +7,8 @@ function safeName(name: string) {
 
 const ALLOWED = ["application/pdf", "image/png", "image/jpeg"];
 
-function isVercelRuntime() {
+function isVercel() {
   return process.env.VERCEL === "1" || !!process.env.VERCEL_ENV;
-}
-
-type StorageMode = "blob" | "fs";
-
-function getStorageMode(): StorageMode {
-  // Optional override:
-  // - On VPS: set UPLOAD_STORAGE=fs
-  // - On Vercel: set UPLOAD_STORAGE=blob (or leave unset)
-  const forced = (process.env.UPLOAD_STORAGE || "").toLowerCase();
-  if (forced === "blob" || forced === "fs") return forced;
-
-  // Default: Vercel => blob, others => fs
-  return isVercelRuntime() ? "blob" : "fs";
 }
 
 export async function uploadShipmentDocument(shipmentId: string, file: File) {
@@ -35,21 +22,18 @@ export async function uploadShipmentDocument(shipmentId: string, file: File) {
   const cleanName = safeName(file.name || `document.${ext}`);
   const fileName = `${Date.now()}_${cleanName}`;
 
-  const mode = getStorageMode();
-
-  // ✅ Vercel / Cloud storage
-  if (mode === "blob") {
+  // ✅ On Vercel: NEVER use filesystem
+  if (isVercel()) {
     if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      // Critical: do NOT fall back to filesystem on Vercel
       throw new Error(
-        "Blob upload is enabled but BLOB_READ_WRITE_TOKEN is missing. Add it in Vercel env vars (Production/Preview) and redeploy."
+        "Vercel requires Blob upload. Missing BLOB_READ_WRITE_TOKEN in Vercel env vars (Production/Preview). Save + redeploy."
       );
     }
 
     const { put } = await import("@vercel/blob");
     const blob = await put(`shipments/${cleanShipmentId}/${fileName}`, file, {
       access: "public",
-      contentType: mime, // helps correct serving
+      contentType: mime,
     });
 
     return {
@@ -62,31 +46,26 @@ export async function uploadShipmentDocument(shipmentId: string, file: File) {
   }
 
   // ✅ VPS / Local filesystem
-  if (isVercelRuntime()) {
-    // Safety net: filesystem storage is not supported on Vercel
-    throw new Error("Filesystem uploads are not supported on Vercel. Use Blob.");
-  }
+//   const uploadDir = path.join(
+//     process.cwd(),
+//     "public",
+//     "uploads",
+//     "shipments",
+//     cleanShipmentId
+//   );
 
-  const uploadDir = path.join(
-    process.cwd(),
-    "public",
-    "uploads",
-    "shipments",
-    cleanShipmentId
-  );
+//   await fs.mkdir(uploadDir, { recursive: true });
 
-  await fs.mkdir(uploadDir, { recursive: true });
+//   const buffer = Buffer.from(await file.arrayBuffer());
+//   const absPath = path.join(uploadDir, fileName);
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const absPath = path.join(uploadDir, fileName);
+//   await fs.writeFile(absPath, buffer);
 
-  await fs.writeFile(absPath, buffer);
-
-  return {
-    fileUrl: `/uploads/shipments/${cleanShipmentId}/${fileName}`,
-    mimeType: mime,
-    fileSize: buffer.length,
-    originalName: file.name,
-    storage: "fs" as const,
-  };
+//   return {
+//     fileUrl: `/uploads/shipments/${cleanShipmentId}/${fileName}`,
+//     mimeType: mime,
+//     fileSize: buffer.length,
+//     originalName: file.name,
+//     storage: "fs" as const,
+//   };
 }
