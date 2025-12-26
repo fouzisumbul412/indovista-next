@@ -4,14 +4,13 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { deleteShipmentDocument } from "@/lib/deleteShipmentDocument";
 
-type Ctx = {
-  params: { id: string; docId: string };
-};
-
 /* =========================
-   UPDATE METADATA
+   UPDATE DOCUMENT METADATA
    ========================= */
-export async function PATCH(req: Request, { params }: Ctx) {
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string; docId: string } }
+) {
   try {
     const { id: shipmentId, docId } = params;
     const body = await req.json();
@@ -43,14 +42,19 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     return NextResponse.json({ ok: true, id: updated.id });
   } catch (e: any) {
-    return new NextResponse(e?.message || "Update failed", { status: 500 });
+    return new NextResponse(e?.message || "Document update failed", {
+      status: 500,
+    });
   }
 }
 
 /* =========================
-   DELETE DOCUMENT (SAFE)
+   DELETE DOCUMENT (BLOB + FS SAFE)
    ========================= */
-export async function DELETE(_req: Request, { params }: Ctx) {
+export async function DELETE(
+  _req: Request,
+  { params }: { params: { id: string; docId: string } }
+) {
   try {
     const { id: shipmentId, docId } = params;
 
@@ -63,7 +67,9 @@ export async function DELETE(_req: Request, { params }: Ctx) {
       return new NextResponse("Not found", { status: 404 });
     }
 
-    await prisma.shipmentDocument.delete({ where: { id: docId } });
+    await prisma.shipmentDocument.delete({
+      where: { id: docId },
+    });
 
     if (doc.fileUrl) {
       await deleteShipmentDocument(shipmentId, doc.fileUrl);
@@ -71,6 +77,8 @@ export async function DELETE(_req: Request, { params }: Ctx) {
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    return new NextResponse(e?.message || "Delete failed", { status: 500 });
+    return new NextResponse(e?.message || "Document delete failed", {
+      status: 500,
+    });
   }
 }
