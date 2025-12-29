@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
+import { getActorFromRequest } from "@/lib/getActor";
+import { AuditAction, AuditEntityType } from "@/lib/generated/prisma/browser";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +25,7 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
 
-    // Return JSON-serializable dates
-    return NextResponse.json(
-      users.map((u) => ({ ...u, createdAt: u.createdAt.toISOString() }))
-    );
+    return NextResponse.json(users.map((u) => ({ ...u, createdAt: u.createdAt.toISOString() })));
   } catch (e: any) {
     return NextResponse.json({ message: e?.message || "Failed to fetch users" }, { status: 500 });
   }
@@ -33,6 +33,10 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    // ✅ Real actor from cookie/JWT
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const body = await req.json().catch(() => ({}));
 
     const loginId = String(body?.loginId || "").trim();
@@ -49,19 +53,25 @@ export async function POST(req: Request) {
     const hashed = await bcrypt.hash(password, 10);
 
     const created = await prisma.user.create({
-      data: {
-        loginId,
-        name,
-        email,
-        role,
-        password: hashed,
-      },
+      data: { loginId, name, email, role, password: hashed },
       select: { id: true, loginId: true, name: true, email: true, role: true, createdAt: true },
+    });
+
+    // ✅ AUDIT LOG (no "req" passed)
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.CREATE,
+      entityType: AuditEntityType.USER,
+      entityId: String(created.id),
+      entityRef: created.loginId,
+      description: `User created: ${created.name} (${created.loginId}) role=${created.role}`,
+      meta: { created: { ...created, createdAt: created.createdAt.toISOString() } },
     });
 
     return NextResponse.json({ ...created, createdAt: created.createdAt.toISOString() }, { status: 201 });
   } catch (e: any) {
-    // Unique constraint (loginId)
     if (e?.code === "P2002") {
       return NextResponse.json({ message: "loginId already exists" }, { status: 409 });
     }

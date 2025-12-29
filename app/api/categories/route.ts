@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
+import { getActorFromRequest } from "@/lib/getActor";
+import { AuditAction, AuditEntityType } from "@/lib/generated/prisma/browser";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +55,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const body = await req.json().catch(() => ({}));
 
     if (!body?.name || typeof body.name !== "string") {
@@ -83,13 +89,25 @@ export async function POST(req: Request) {
         storageType: normalizeStorageType(body.storageType),
         documents: body.documents || null,
         notes: body.notes || null,
-        temperatureId: temperatureId,
+        temperatureId,
       },
       include: {
         temperature: {
           select: { id: true, name: true, range: true, tolerance: true, setPoint: true, unit: true },
         },
       },
+    });
+
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.CREATE,
+      entityType: AuditEntityType.CATEGORY,
+      entityId: created.id,
+      entityRef: created.id,
+      description: `Category created: ${created.name} (${created.id})`,
+      meta: { created },
     });
 
     return NextResponse.json(created, { status: 201 });

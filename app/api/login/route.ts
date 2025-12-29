@@ -1,8 +1,9 @@
-// app/api/login/route.ts
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { createToken } from "@/lib/jwt";
+import { logAudit } from "@/lib/audit";
+import { AuditAction, AuditEntityType } from "@/lib/generated/prisma/browser";
 
 export async function POST(req: Request) {
   try {
@@ -15,32 +16,21 @@ export async function POST(req: Request) {
     }
 
     const user = await prisma.user.findFirst({
-      where: {
-        OR: [{ loginId: identifier }, { email: identifier }],
-      },
+      where: { OR: [{ loginId: identifier }, { email: identifier }] },
     });
 
-    if (!user) {
-      return NextResponse.json({ message: "Invalid login credentials" }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ message: "Invalid login credentials" }, { status: 401 });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return NextResponse.json({ message: "Invalid login credentials" }, { status: 401 });
-    }
+    if (!isMatch) return NextResponse.json({ message: "Invalid login credentials" }, { status: 401 });
 
-    const token = createToken({
-      id: user.id,
-      loginId: user.loginId,
-      role: user.role,
-    });
+    const token = createToken({ id: user.id, loginId: user.loginId, role: user.role });
 
     const response = NextResponse.json({
       message: "Login Success",
       user: { id: user.id, name: user.name, role: user.role, loginId: user.loginId, email: user.email },
     });
 
-    // ✅ IMPORTANT: secure must be false in dev/localhost or cookie won't set
     response.cookies.set({
       name: "token",
       value: token,
@@ -48,7 +38,20 @@ export async function POST(req: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    // ✅ AUDIT LOG (LOGIN)
+    await logAudit({
+      actorUserId: user.id,
+      actorName: user.name,
+      actorRole: user.role,
+      action: AuditAction.LOGIN,
+      entityType: AuditEntityType.USER,
+      entityId: String(user.id),
+      entityRef: user.loginId,
+      description: `User login: ${user.name} (${user.loginId})`,
+      meta: { loginId: user.loginId },
     });
 
     return response;
