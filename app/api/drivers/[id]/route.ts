@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
+import { getActorFromRequest } from "@/lib/getActor";
+import { AuditAction, AuditEntityType } from "@/lib/generated/prisma/browser";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +70,9 @@ export async function GET(_: Request, ctx: any) {
 
 export async function PUT(req: Request, ctx: any) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const id = await getIdFromContext(ctx);
     if (!id) return NextResponse.json({ message: "Missing driver id" }, { status: 400 });
 
@@ -75,11 +81,18 @@ export async function PUT(req: Request, ctx: any) {
       return NextResponse.json({ message: "Driver name is required" }, { status: 400 });
     }
 
+    // ✅ capture BEFORE snapshot for audit
+    const before = await prisma.driver.findUnique({
+      where: { id },
+      include: { vehicles: { select: { vehicleId: true } } },
+    });
+    if (!before) return NextResponse.json({ message: "Driver not found" }, { status: 404 });
+
     const transportMode = normalizeMode(body.transportMode);
     const role = normalizeRole(body.role);
     const vehicleIds: string[] = Array.isArray(body.vehicleIds) ? body.vehicleIds : [];
 
-    // ✅ Validate vehicles exist + mode matches (prevents FK errors and wrong-mode assignments)
+    // ✅ Validate vehicles exist + mode matches
     if (vehicleIds.length) {
       const vehicles = await prisma.vehicle.findMany({
         where: { id: { in: vehicleIds } },
@@ -133,6 +146,28 @@ export async function PUT(req: Request, ctx: any) {
       return d;
     });
 
+    // ✅ Audit log (UPDATE)
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.UPDATE,
+      entityType: AuditEntityType.DRIVER,
+      entityId: id,
+      entityRef: id,
+      description: `Driver updated: ${updated.name} (${updated.id})`,
+      meta: {
+        before: {
+          ...before,
+          vehicleIds: (before.vehicles || []).map((v) => v.vehicleId),
+        },
+        after: {
+          ...updated,
+          vehicleIds,
+        },
+      },
+    });
+
     return NextResponse.json(updated);
   } catch (e: any) {
     if (e?.code === "P2025") {
@@ -142,14 +177,37 @@ export async function PUT(req: Request, ctx: any) {
   }
 }
 
-export async function DELETE(_: Request, ctx: any) {
+export async function DELETE(req: Request, ctx: any) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const id = await getIdFromContext(ctx);
     if (!id) return NextResponse.json({ message: "Missing driver id" }, { status: 400 });
+
+    // ✅ capture BEFORE snapshot (needed for audit)
+    const before = await prisma.driver.findUnique({
+      where: { id },
+      select: { id: true, name: true, transportMode: true, role: true, contactNumber: true, email: true },
+    });
+    if (!before) return NextResponse.json({ message: "Driver not found" }, { status: 404 });
 
     await prisma.$transaction(async (tx) => {
       await tx.vehicleDriver.deleteMany({ where: { driverId: id } });
       await tx.driver.delete({ where: { id } });
+    });
+
+    // ✅ Audit log (DELETE)
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.DELETE,
+      entityType: AuditEntityType.DRIVER,
+      entityId: before.id,
+      entityRef: before.id,
+      description: `Driver deleted: ${before.name} (${before.id})`,
+      meta: { deleted: before },
     });
 
     return NextResponse.json({ success: true });

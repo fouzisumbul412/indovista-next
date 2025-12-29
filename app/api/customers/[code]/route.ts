@@ -1,8 +1,11 @@
 // app/api/customers/[code]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
+import { getActorFromRequest } from "@/lib/getActor";
+import { AuditAction, AuditEntityType } from "@/lib/generated/prisma/browser";
 
-// In Next 16, `params` is a Promise -> we must `await` it
+// In Next 16, params can be a Promise -> we must await it
 type RouteContext = {
   params: Promise<{ code: string }>;
 };
@@ -20,10 +23,8 @@ function shapeCustomerWithShipments(customer: any) {
       mode: s.mode,
       status: s.status,
       etd: toDateOnly(s.etd),
-
       origin: { code: s.originPort?.code || "N/A" },
       destination: { code: s.destPort?.code || "N/A" },
-
       financials: {
         currency: s.currency?.currencyCode || customer.currency || "INR",
         revenue: s.revenue ?? 0,
@@ -32,7 +33,7 @@ function shapeCustomerWithShipments(customer: any) {
   };
 }
 
-// GET /api/customers/:code  (✅ now includes shipments)
+// GET /api/customers/:code (includes shipments)
 export async function GET(_req: NextRequest, context: RouteContext) {
   try {
     const { code } = await context.params;
@@ -66,18 +67,37 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   }
 }
 
-// PUT /api/customers/:code  (✅ returns updated customer + shipments too)
+// PUT /api/customers/:code (returns updated customer + shipments)
 export async function PUT(req: NextRequest, context: RouteContext) {
   try {
     const { code } = await context.params;
+
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     if (!code) {
       return NextResponse.json({ message: "Customer code is required" }, { status: 400 });
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
 
-    await prisma.customer.update({
+    // optional: capture "before" snapshot for audit meta
+    const before = await prisma.customer.findUnique({
+      where: { customerCode: code },
+      select: {
+        id: true,
+        customerCode: true,
+        companyName: true,
+        email: true,
+        phone: true,
+        status: true,
+        creditLimit: true,
+        usedCredits: true,
+        totalAmount: true,
+      },
+    });
+
+    const updatedCustomer = await prisma.customer.update({
       where: { customerCode: code },
       data: {
         companyName: body.companyName,
@@ -114,6 +134,22 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       },
     });
 
+    if (!refreshed) {
+      return NextResponse.json({ message: "Customer not found after update" }, { status: 404 });
+    }
+
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.UPDATE,
+      entityType: AuditEntityType.CUSTOMER,
+      entityId: refreshed.id, // Customer.id is String in your schema
+      entityRef: refreshed.customerCode,
+      description: `Customer updated: ${refreshed.companyName} (${refreshed.customerCode})`,
+      meta: { before, after: updatedCustomer },
+    });
+
     return NextResponse.json(shapeCustomerWithShipments(refreshed));
   } catch (error) {
     console.error("[PUT /api/customers/[code]] Error:", error);
@@ -122,16 +158,39 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 }
 
 // DELETE /api/customers/:code
-export async function DELETE(_req: NextRequest, context: RouteContext) {
+export async function DELETE(req: NextRequest, context: RouteContext) {
   try {
     const { code } = await context.params;
+
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     if (!code) {
       return NextResponse.json({ message: "Customer code is required" }, { status: 400 });
     }
 
-    await prisma.customer.delete({
+    // capture record before delete for audit
+    const before = await prisma.customer.findUnique({
       where: { customerCode: code },
+      select: { id: true, customerCode: true, companyName: true },
+    });
+
+    if (!before) {
+      return NextResponse.json({ message: "Customer not found" }, { status: 404 });
+    }
+
+    await prisma.customer.delete({ where: { customerCode: code } });
+
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.DELETE,
+      entityType: AuditEntityType.CUSTOMER,
+      entityId: before.id,
+      entityRef: before.customerCode,
+      description: `Customer deleted: ${before.companyName} (${before.customerCode})`,
+      meta: { deleted: before },
     });
 
     return NextResponse.json({ message: "Deleted successfully" });

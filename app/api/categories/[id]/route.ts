@@ -74,7 +74,7 @@ export async function PUT(req: Request, context: RouteContext) {
       actorUserId: actor.id,
       actorName: actor.name,
       actorRole: actor.role,
-      action: AuditAction.UPDATE, // ✅ FIXED
+      action: AuditAction.UPDATE, 
       entityType: AuditEntityType.CATEGORY,
       entityId: updated.id,
       entityRef: updated.id,

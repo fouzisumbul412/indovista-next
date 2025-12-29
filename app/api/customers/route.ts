@@ -2,6 +2,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateCustomerCode } from "@/lib/customerCode";
+import { logAudit } from "@/lib/audit";
+import { getActorFromRequest } from "@/lib/getActor";
+import { AuditAction, AuditEntityType } from "@/lib/generated/prisma/browser";
 
 // GET /api/customers → list all customers
 export async function GET(_req: NextRequest) {
@@ -24,6 +27,8 @@ export async function GET(_req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const data = await req.json();
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     // Basic validation for required fields
     if (!data.companyName || !data.email || !data.country) {
@@ -56,7 +61,17 @@ export async function POST(req: NextRequest) {
         status: data.status || "ACTIVE",
       },
     });
-
+     await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.CREATE,
+      entityType: AuditEntityType.CUSTOMER,
+      entityId: created.id,
+      entityRef: created.id,
+      description: `Customer created: ${created.companyName} (${created.id})`,
+      meta: { created },
+    });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     console.error("[POST /api/customers] Error:", error);

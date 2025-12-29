@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
+import { getActorFromRequest } from "@/lib/getActor";
+import { AuditAction, AuditEntityType } from "@/lib/generated/prisma/browser";
 
 export const dynamic = "force-dynamic";
 
@@ -73,13 +76,15 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const body = await req.json().catch(() => ({}));
 
     const name = String(body?.name || "").trim();
     if (!name) return NextResponse.json({ message: "Driver name is required" }, { status: 400 });
 
-    const id =
-      typeof body.id === "string" && body.id.trim() ? body.id.trim() : await generateDriverId();
+    const id = typeof body.id === "string" && body.id.trim() ? body.id.trim() : await generateDriverId();
 
     const transportMode = normalizeMode(body.transportMode);
     const role = normalizeRole(body.role);
@@ -136,6 +141,19 @@ export async function POST(req: Request) {
       }
 
       return d;
+    });
+
+    // ✅ Audit log (CREATE)
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.CREATE,
+      entityType: AuditEntityType.DRIVER,
+      entityId: created.id,
+      entityRef: created.id,
+      description: `Driver created: ${created.name} (${created.id})`,
+      meta: { created, vehicleIds },
     });
 
     return NextResponse.json(created, { status: 201 });
