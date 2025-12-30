@@ -13,7 +13,7 @@ export async function GET() {
     });
 
     // Shape data for Excel rows
-    const rows = customers.map((c) => ({
+    const rows = customers.map((c: typeof customers[number]) => ({
       CustomerCode: c.customerCode,
       CompanyName: c.companyName,
       Type: c.type,

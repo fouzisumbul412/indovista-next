@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { getActorFromRequest } from "@/lib/getActor";
-import  Prisma  from "@prisma/client";
 
 enum AuditAction {
   CREATE = "CREATE",
@@ -55,7 +54,7 @@ export async function GET(req: NextRequest) {
     });
 
     // ✅ Shape the response (no need to force rows into your Driver type)
-    const shaped = rows.map((d) => ({
+    const shaped = rows.map((d: typeof rows[0]) => ({
       id: d.id,
       name: d.name,
       age: d.age,
@@ -75,7 +74,7 @@ export async function GET(req: NextRequest) {
       createdAt: d.createdAt?.toISOString?.() ?? null,
       updatedAt: d.updatedAt?.toISOString?.() ?? null,
 
-      assignedVehicles: (d.vehicles ?? []).map((x) => ({
+      assignedVehicles: (d.vehicles ?? []).map((x: typeof d.vehicles[0]) => ({
         id: x.vehicle.id,
         name: x.vehicle.name,
         number: x.vehicle.number,
