@@ -1,7 +1,19 @@
-import { NextResponse } from "next/server";
+// app/api/products/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
+import { getActorFromRequest } from "@/lib/getActor";
 
 export const dynamic = "force-dynamic";
+
+enum AuditAction {
+  CREATE = "CREATE",
+  UPDATE = "UPDATE",
+  DELETE = "DELETE",
+}
+enum AuditEntityType {
+  PRODUCT = "PRODUCT",
+}
 
 type ProductType = "FROZEN" | "SPICE";
 
@@ -25,6 +37,12 @@ function normalizeUnitPrice(value: any): number | null {
 function normalizeCurrencyCode(value: any): string {
   const v = String(value || "").trim().toUpperCase();
   return v || "INR";
+}
+
+function toJson(value: any) {
+  return JSON.parse(
+    JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? v.toString() : v))
+  );
 }
 
 async function generateProductId(): Promise<string> {
@@ -60,8 +78,11 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const body = await req.json().catch(() => ({}));
 
     if (!body?.name || typeof body.name !== "string") {
@@ -71,12 +92,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "categoryId is required" }, { status: 400 });
     }
 
-    // ✅ category default temperature
     const category = await prisma.category.findUnique({
       where: { id: body.categoryId },
       select: { id: true, temperatureId: true },
     });
-
     if (!category) {
       return NextResponse.json({ message: "Invalid categoryId" }, { status: 400 });
     }
@@ -92,7 +111,6 @@ export async function POST(req: Request) {
       if (!exists) return NextResponse.json({ message: "Invalid temperatureId" }, { status: 400 });
     }
 
-    // ✅ currency
     const finalCurrencyCode = normalizeCurrencyCode(body.currencyCode);
     const currencyExists = await prisma.currency.findUnique({
       where: { currencyCode: finalCurrencyCode },
@@ -103,7 +121,9 @@ export async function POST(req: Request) {
     }
 
     const id =
-      typeof body.id === "string" && body.id.trim() ? body.id.trim() : await generateProductId();
+      typeof body.id === "string" && body.id.trim()
+        ? body.id.trim()
+        : await generateProductId();
 
     const created = await prisma.product.create({
       data: {
@@ -131,6 +151,18 @@ export async function POST(req: Request) {
         temperature: { select: { id: true, name: true, range: true, tolerance: true, setPoint: true, unit: true } },
         currency: { select: { currencyCode: true, name: true, exchangeRate: true } },
       },
+    });
+
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.CREATE as any,
+      entityType: AuditEntityType.PRODUCT as any,
+      entityId: created.id,
+      entityRef: created.name,
+      description: `Product created: ${created.name} (${created.id}) type=${created.type}`,
+      meta: { created: toJson(created) },
     });
 
     return NextResponse.json(created, { status: 201 });

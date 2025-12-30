@@ -1,7 +1,19 @@
-import { NextResponse } from "next/server";
+// app/api/shipments/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getActorFromRequest } from "@/lib/getActor";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
+
+enum AuditAction {
+  CREATE = "CREATE",
+  UPDATE = "UPDATE",
+  DELETE = "DELETE",
+}
+enum AuditEntityType {
+  SHIPMENT = "SHIPMENT",
+}
 
 const clean = (v: any) => String(v ?? "").trim();
 const upper = (v: any, fallback: string) => clean(v || fallback).toUpperCase();
@@ -75,8 +87,11 @@ const fallbackCode = (city?: string | null) => {
   return c.slice(0, 3).toUpperCase();
 };
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+
     const body = await req.json();
 
     const customerId = clean(body.customerId);
@@ -205,14 +220,43 @@ export async function POST(req: Request) {
                 status: status as any,
                 location: originCity || null,
                 description: "Shipment created",
-                user: "System",
+                user: actor.name || "System",
               },
             },
           },
           select: { id: true, reference: true },
         });
 
-        return NextResponse.json(created);
+        await logAudit({
+          actorUserId: actor.id,
+          actorName: actor.name,
+          actorRole: actor.role,
+          action: AuditAction.CREATE as any,
+          entityType: AuditEntityType.SHIPMENT as any,
+          entityId: created.id,
+          entityRef: created.reference,
+          description: `Shipment created: ${created.reference}`,
+          meta: {
+            shipmentId: created.id,
+            reference: created.reference,
+            customerId,
+            direction,
+            mode,
+            commodity,
+            origin: { city: originCity, country: originCountry, code: originPortId ? "PORT" : fallbackCode(originCity) },
+            destination: { city: destCity, country: destCountry, code: destPortId ? "PORT" : fallbackCode(destCity) },
+            status,
+            slaStatus,
+            revenue,
+            cost,
+            margin,
+            currencyId,
+            invoiceStatus,
+            itemsCount: items?.length || 0,
+          },
+        });
+
+        return NextResponse.json(created, { headers: noStoreHeaders });
       } catch (e: any) {
         if (e?.code === "P2002") continue;
         throw e;
@@ -227,6 +271,7 @@ export async function POST(req: Request) {
 
 export async function GET() {
   try {
+    // (Optional) You can require auth here too; keeping as-is like your code.
     const rows = await prisma.shipment.findMany({
       orderBy: { createdAt: "desc" },
       select: {
@@ -251,7 +296,6 @@ export async function GET() {
 
         vehicleId: true,
 
-        // ✅ billing defaults
         createdAt: true,
         revenue: true,
 
@@ -295,7 +339,6 @@ export async function GET() {
       customerIds.length
         ? prisma.customer.findMany({
             where: { id: { in: customerIds } },
-            // ✅ add fields needed by billing modal (must exist in your schema)
             select: { id: true, companyName: true, kycStatus: true, sanctionsCheck: true },
           })
         : Promise.resolve([]),
@@ -345,11 +388,9 @@ export async function GET() {
           reference: s.reference || "",
           masterDoc: s.masterDoc || "",
 
-          // ✅ keep old field + add new
           customer: customerMap.get(s.customerId) || "",
           customerName: customerMap.get(s.customerId) || "",
 
-          // ✅ billing fields
           customerGstin: gstinMap.get(s.customerId) || "",
           placeOfSupply: posMap.get(s.customerId) || "",
           createdAt: s.createdAt ? s.createdAt.toISOString() : "",

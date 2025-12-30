@@ -1,7 +1,19 @@
-import { NextResponse } from "next/server";
+// app/api/products/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
+import { getActorFromRequest } from "@/lib/getActor";
 
 export const dynamic = "force-dynamic";
+
+enum AuditAction {
+  CREATE = "CREATE",
+  UPDATE = "UPDATE",
+  DELETE = "DELETE",
+}
+enum AuditEntityType {
+  PRODUCT = "PRODUCT",
+}
 
 type ProductType = "FROZEN" | "SPICE";
 
@@ -27,14 +39,23 @@ function normalizeCurrencyCode(value: any): string {
   return v || "INR";
 }
 
+function toJson(value: any) {
+  return JSON.parse(
+    JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? v.toString() : v))
+  );
+}
+
 type RouteContext = {
   params: { id: string } | Promise<{ id: string }>;
 };
 
-export async function PUT(req: Request, context: RouteContext) {
+export async function PUT(req: NextRequest, context: RouteContext) {
   const { id } = await Promise.resolve(context.params);
 
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const body = await req.json().catch(() => ({}));
 
     if (!id) return NextResponse.json({ message: "Missing product id" }, { status: 400 });
@@ -44,6 +65,12 @@ export async function PUT(req: Request, context: RouteContext) {
     if (!body?.categoryId || typeof body.categoryId !== "string") {
       return NextResponse.json({ message: "categoryId is required" }, { status: 400 });
     }
+
+    const before = await prisma.product.findUnique({
+      where: { id },
+      select: { id: true, name: true, type: true, categoryId: true, temperatureId: true, currencyCode: true },
+    });
+    if (!before) return NextResponse.json({ message: "Product not found" }, { status: 404 });
 
     const category = await prisma.category.findUnique({
       where: { id: body.categoryId },
@@ -62,7 +89,6 @@ export async function PUT(req: Request, context: RouteContext) {
       if (!exists) return NextResponse.json({ message: "Invalid temperatureId" }, { status: 400 });
     }
 
-    // ✅ currency
     const finalCurrencyCode = normalizeCurrencyCode(body.currencyCode);
     const currencyExists = await prisma.currency.findUnique({
       where: { currencyCode: finalCurrencyCode },
@@ -100,6 +126,18 @@ export async function PUT(req: Request, context: RouteContext) {
       },
     });
 
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.UPDATE as any,
+      entityType: AuditEntityType.PRODUCT as any,
+      entityId: updated.id,
+      entityRef: updated.name,
+      description: `Product updated: ${updated.name} (${updated.id})`,
+      meta: { before: toJson(before), after: toJson(updated) },
+    });
+
     return NextResponse.json(updated);
   } catch (error: any) {
     console.error("[PUT /api/products/:id] Error:", error);
@@ -108,13 +146,34 @@ export async function PUT(req: Request, context: RouteContext) {
   }
 }
 
-export async function DELETE(_req: Request, context: RouteContext) {
+export async function DELETE(req: NextRequest, context: RouteContext) {
   const { id } = await Promise.resolve(context.params);
 
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     if (!id) return NextResponse.json({ message: "Missing product id" }, { status: 400 });
 
+    const before = await prisma.product.findUnique({
+      where: { id },
+      select: { id: true, name: true, type: true },
+    });
+    if (!before) return NextResponse.json({ message: "Product not found" }, { status: 404 });
+
     await prisma.product.delete({ where: { id } });
+
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.DELETE as any,
+      entityType: AuditEntityType.PRODUCT as any,
+      entityId: before.id,
+      entityRef: before.name,
+      description: `Product deleted: ${before.name} (${before.id})`,
+      meta: { deleted: toJson(before) },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

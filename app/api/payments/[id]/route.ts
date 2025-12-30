@@ -1,9 +1,22 @@
-import {  NextRequest, NextResponse } from "next/server";
+// app/api/payments/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { recalcInvoicePaidStatus, recalcShipmentInvoiceStatus } from "@/lib/financials";
+import { logAudit } from "@/lib/audit";
+import { getActorFromRequest } from "@/lib/getActor";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+enum AuditAction {
+  CREATE = "CREATE",
+  UPDATE = "UPDATE",
+  DELETE = "DELETE",
+}
+enum AuditEntityType {
+  PAYMENT = "PAYMENT",
+}
+
 const noStoreHeaders = { "Cache-Control": "no-store, max-age=0" };
 
 const allowedMethods = new Set(["UPI", "CASH", "ACCOUNT", "CHEQUE", "OTHER"]);
@@ -14,13 +27,21 @@ function safeDate(input: any): Date {
   return Number.isNaN(d.getTime()) ? new Date() : d;
 }
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+function toJson(value: any) {
+  return JSON.parse(
+    JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? v.toString() : v))
+  );
+}
+
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+    }
+
     const { id } = await params;
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
 
     const amount = Number(body.amount);
     const currency = String(body.currency ?? "INR").toUpperCase().trim();
@@ -41,11 +62,23 @@ export async function PUT(
       return NextResponse.json({ message: "Invalid payment status" }, { status: 400, headers: noStoreHeaders });
     }
 
-    const existing = await prisma.payment.findUnique({
+    const before = await prisma.payment.findUnique({
       where: { id },
-      select: { id: true, shipmentId: true, invoiceId: true },
+      select: {
+        id: true,
+        shipmentId: true,
+        invoiceId: true,
+        amount: true,
+        currency: true,
+        method: true,
+        status: true,
+        transactionNum: true,
+        date: true,
+      },
     });
-    if (!existing) return NextResponse.json({ message: "Payment not found" }, { status: 404, headers: noStoreHeaders });
+    if (!before) {
+      return NextResponse.json({ message: "Payment not found" }, { status: 404, headers: noStoreHeaders });
+    }
 
     const updated = await prisma.payment.update({
       where: { id },
@@ -58,10 +91,33 @@ export async function PUT(
         notes,
         status: status as any,
       },
+      select: {
+        id: true,
+        shipmentId: true,
+        invoiceId: true,
+        amount: true,
+        currency: true,
+        method: true,
+        status: true,
+        transactionNum: true,
+        date: true,
+      },
     });
 
-    if (existing.invoiceId) await recalcInvoicePaidStatus(existing.invoiceId);
-    await recalcShipmentInvoiceStatus(existing.shipmentId);
+    if (before.invoiceId) await recalcInvoicePaidStatus(before.invoiceId);
+    await recalcShipmentInvoiceStatus(before.shipmentId);
+
+    await logAudit({
+       actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.UPDATE as any,
+      entityType: AuditEntityType.PAYMENT as any,
+      entityId: updated.id,
+      entityRef: updated.transactionNum || updated.id,
+      description: `Payment updated: ${updated.amount} ${updated.currency} (${updated.method}) status=${updated.status}`,
+      meta: { before: toJson(before), after: toJson(updated) },
+    });
 
     return NextResponse.json(updated, { headers: noStoreHeaders });
   } catch (e: any) {
@@ -70,23 +126,49 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const actor = await getActorFromRequest(_req);
+    if (!actor) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+    }
+
     const { id } = await params;
 
-    const existing = await prisma.payment.findUnique({
+    const before = await prisma.payment.findUnique({
       where: { id },
-      select: { id: true, shipmentId: true, invoiceId: true },
+      select: {
+        id: true,
+        shipmentId: true,
+        invoiceId: true,
+        amount: true,
+        currency: true,
+        method: true,
+        status: true,
+        transactionNum: true,
+        date: true,
+      },
     });
-    if (!existing) return NextResponse.json({ message: "Payment not found" }, { status: 404, headers: noStoreHeaders });
+    if (!before) {
+      return NextResponse.json({ message: "Payment not found" }, { status: 404, headers: noStoreHeaders });
+    }
 
     await prisma.payment.delete({ where: { id } });
 
-    if (existing.invoiceId) await recalcInvoicePaidStatus(existing.invoiceId);
-    await recalcShipmentInvoiceStatus(existing.shipmentId);
+    if (before.invoiceId) await recalcInvoicePaidStatus(before.invoiceId);
+    await recalcShipmentInvoiceStatus(before.shipmentId);
+
+    await logAudit({
+       actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.DELETE as any,
+      entityType: AuditEntityType.PAYMENT as any,
+      entityId: before.id,
+      entityRef: before.transactionNum || before.id,
+      description: `Payment deleted: ${before.amount} ${before.currency} (${before.method}) status=${before.status}`,
+      meta: { deleted: toJson(before) },
+    });
 
     return NextResponse.json({ ok: true }, { headers: noStoreHeaders });
   } catch (e: any) {

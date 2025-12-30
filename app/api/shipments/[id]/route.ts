@@ -1,8 +1,20 @@
-import { NextResponse } from "next/server";
+// app/api/shipments/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getActorFromRequest } from "@/lib/getActor";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+enum AuditAction {
+  CREATE = "CREATE",
+  UPDATE = "UPDATE",
+  DELETE = "DELETE",
+}
+enum AuditEntityType {
+  SHIPMENT = "SHIPMENT",
+}
 
 const clean = (v: any) => String(v ?? "").trim();
 const upper = (v: any, fallback: string) => clean(v || fallback).toUpperCase();
@@ -14,6 +26,12 @@ const normalizeParam = (v: string) => clean(decodeURIComponent(v || ""));
 type RouteCtx = {
   params: Promise<{ id: string }> | { id: string };
 };
+
+function toJson(value: any) {
+  return JSON.parse(
+    JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? v.toString() : v))
+  );
+}
 
 async function getParamId(ctx: RouteCtx) {
   const p: any = ctx?.params;
@@ -129,40 +147,37 @@ async function shapeShipment(idOrRef: string) {
 
       s.driverId ? prisma.driver.findUnique({ where: { id: s.driverId } }) : Promise.resolve(null),
 
-      // ✅ invoices for this shipment
       prisma.shipmentInvoice.findMany({
         where: { shipmentId: s.id },
         orderBy: { createdAt: "desc" },
         select: {
-           id: true,
-      shipmentId: true,
-      invoiceNumber: true,
-      status: true,
-      amount: true,
-      currency: true,
-      issueDate: true,
-      dueDate: true,
-      createdAt: true,
+          id: true,
+          shipmentId: true,
+          invoiceNumber: true,
+          status: true,
+          amount: true,
+          currency: true,
+          issueDate: true,
+          dueDate: true,
+          createdAt: true,
         },
       }),
 
-      // ✅ payments for this shipment
-      // If your Prisma model name is different, change shipmentPayment -> <yourModel>
       prisma.payment.findMany({
         where: { shipmentId: s.id },
         orderBy: { date: "desc" },
         select: {
           id: true,
-      shipmentId: true,
-      invoiceId: true,
-      amount: true,
-      currency: true,
-      method: true,
-      transactionNum: true,
-      date: true,
-      notes: true,
-      status: true,
-      createdAt: true,
+          shipmentId: true,
+          invoiceId: true,
+          amount: true,
+          currency: true,
+          method: true,
+          transactionNum: true,
+          date: true,
+          notes: true,
+          status: true,
+          createdAt: true,
         },
       }),
     ]);
@@ -207,7 +222,6 @@ async function shapeShipment(idOrRef: string) {
       ? { id: (containerType as any).id, code: (containerType as any).code, name: (containerType as any).name }
       : null,
 
-    // ✅ make null when missing (UI fallback works)
     temperature: temperature
       ? {
           id: (temperature as any).id,
@@ -280,13 +294,12 @@ async function shapeShipment(idOrRef: string) {
       location: e.location || "",
       description: e.description || "",
       user: e.user || "",
-       proofUrl: e.proofUrl || "",
+      proofUrl: e.proofUrl || "",
       proofName: e.proofName || "",
       proofMimeType: e.proofMimeType || "",
       proofFileSize: e.proofFileSize ?? null,
     })),
 
-    // ✅ NEW: invoices + payments (used by Shipment Detail Financials tab)
     invoices: (invoices || []).map((inv: any) => ({
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
@@ -330,8 +343,11 @@ export async function GET(_: Request, ctx: RouteCtx) {
   }
 }
 
-export async function PATCH(req: Request, ctx: RouteCtx) {
+export async function PATCH(req: NextRequest, ctx: RouteCtx) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+
     const idOrRef = await getParamId(ctx);
 
     const body = await req.json();
@@ -351,9 +367,9 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     }
 
     if (body.driverId !== undefined && body.driverId) {
-      const d = await prisma.driver.findUnique({ where: { id: clean(body.driverId) } });
-      if (!d) return new NextResponse("Invalid driverId", { status: 400 });
-      if (upper((d as any).transportMode, "") !== upper(nextMode, "")) {
+      const dr = await prisma.driver.findUnique({ where: { id: clean(body.driverId) } });
+      if (!dr) return new NextResponse("Invalid driverId", { status: 400 });
+      if (upper((dr as any).transportMode, "") !== upper(nextMode, "")) {
         return new NextResponse("Driver mode mismatch", { status: 400 });
       }
     }
@@ -443,7 +459,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
           status: nextStatus,
           location: body.location || defaultLocationForStatus(nextStatus, existing),
           description: body.description || defaultDescriptionForStatus(nextStatus),
-          user: body.user || "System",
+          user: body.user || actor.name || "System",
         },
       };
     }
@@ -451,6 +467,46 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     await prisma.shipment.update({ where: { id }, data });
 
     const shipment = await shapeShipment(String(id));
+
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.UPDATE as any,
+      entityType: AuditEntityType.SHIPMENT as any,
+      entityId: String(existing.id),
+      entityRef: existing.reference || String(existing.id),
+      description: `Shipment updated: ${existing.reference || existing.id}`,
+      meta: {
+        before: toJson({
+          id: existing.id,
+          reference: existing.reference,
+          customerId: existing.customerId,
+          direction: existing.direction,
+          mode: existing.mode,
+          commodity: existing.commodity,
+          originCity: existing.originCity,
+          originCountry: existing.originCountry,
+          destCity: existing.destCity,
+          destCountry: existing.destCountry,
+          status: existing.status,
+          slaStatus: existing.slaStatus,
+          etd: existing.etd,
+          eta: existing.eta,
+          vehicleId: existing.vehicleId,
+          driverId: existing.driverId,
+          currencyId: existing.currencyId,
+          revenue: existing.revenue,
+          cost: existing.cost,
+          margin: existing.margin,
+          invoiceStatus: existing.invoiceStatus,
+          itemsCount: existing.items?.length || 0,
+        }),
+        patchApplied: toJson(data),
+        statusChanged,
+      },
+    });
+
     return NextResponse.json(shipment, { headers: noStoreHeaders });
   } catch (e: any) {
     console.error("PATCH /api/shipments/[id] failed:", e);
@@ -458,14 +514,30 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
   }
 }
 
-export async function DELETE(_: Request, ctx: RouteCtx) {
+export async function DELETE(req: NextRequest, ctx: RouteCtx) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+
     const idOrRef = await getParamId(ctx);
 
     const existing: any = await findShipmentRecord(idOrRef);
     if (!existing) return new NextResponse("Not found", { status: 404 });
 
     await prisma.shipment.delete({ where: { id: existing.id } });
+
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.DELETE as any,
+      entityType: AuditEntityType.SHIPMENT as any,
+      entityId: String(existing.id),
+      entityRef: existing.reference || String(existing.id),
+      description: `Shipment deleted: ${existing.reference || existing.id}`,
+      meta: { deleted: toJson({ id: existing.id, reference: existing.reference, customerId: existing.customerId, status: existing.status }) },
+    });
+
     return NextResponse.json({ success: true }, { headers: noStoreHeaders });
   } catch (e: any) {
     console.error("DELETE /api/shipments/[id] failed:", e);

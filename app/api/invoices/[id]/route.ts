@@ -1,6 +1,15 @@
-import { NextRequest,NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { recalcShipmentInvoiceStatus } from "@/lib/financials";
+import { logAudit } from "@/lib/audit";
+import { getActorFromRequest } from "@/lib/getActor";
+enum AuditAction {
+  UPDATE = "UPDATE",
+  DELETE = "DELETE",
+}
+enum AuditEntityType {
+  INVOICE = "INVOICE",
+}
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,10 +34,8 @@ function calcTotals(items: any[], tdsRate: number) {
     const rate = Number(it.rate || 0);
     const taxRate = Number(it.taxRate || 0);
 
-    const taxable =
-      typeof it.taxableValue === "number" ? Number(it.taxableValue) : qty * rate;
+    const taxable = typeof it.taxableValue === "number" ? Number(it.taxableValue) : qty * rate;
 
-    // ✅ IMPORTANT FIX
     const gst = taxable * (taxRate / 100);
 
     subtotal += taxable;
@@ -46,7 +53,11 @@ function sumPaid(payments: any[]): number {
   return (payments || []).reduce((a, p) => a + (Number(p?.amount) || 0), 0);
 }
 
-function computeStatus(baseStatus: string, dueDate: Date, balance: number): "DRAFT" | "SENT" | "PAID" | "OVERDUE" {
+function computeStatus(
+  baseStatus: string,
+  dueDate: Date,
+  balance: number
+): "DRAFT" | "SENT" | "PAID" | "OVERDUE" {
   const s = String(baseStatus || "DRAFT").toUpperCase();
 
   if (balance <= 0) return "PAID";
@@ -80,28 +91,20 @@ function toDetail(inv: any) {
     issueDate: ymd(inv.issueDate),
     dueDate: ymd(inv.dueDate),
     status,
-
     items: Array.isArray(inv.items) ? inv.items : [],
-
     subtotal: Number(inv.subtotal || 0),
     totalTax: Number(inv.totalTax || 0),
     tdsRate: Number(inv.tdsRate || 0),
     tdsAmount: Number(inv.tdsAmount || 0),
     amount: Number(inv.amount || 0),
-
-    // ✅ NEW
     paidAmount,
     balanceAmount,
-
     payments: inv.payments || [],
   };
 }
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-)  {
-   try {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
     const { id } = await params;
 
     const inv = await prisma.shipmentInvoice.findUnique({
@@ -113,27 +116,21 @@ export async function GET(
     });
 
     if (!inv) {
-      return NextResponse.json(
-        { message: "Invoice not found" },
-        { status: 404, headers: noStoreHeaders }
-      );
+      return NextResponse.json({ message: "Invoice not found" }, { status: 404, headers: noStoreHeaders });
     }
 
     return NextResponse.json(toDetail(inv), { headers: noStoreHeaders });
   } catch (e: any) {
     console.error("GET /api/invoices/[id] failed:", e);
-    return NextResponse.json(
-      { message: e?.message || "Failed" },
-      { status: 500, headers: noStoreHeaders }
-    );
+    return NextResponse.json({ message: e?.message || "Failed" }, { status: 500, headers: noStoreHeaders });
   }
 }
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+
     const { id } = await params;
     const body = await req.json();
 
@@ -146,15 +143,30 @@ export async function PUT(
     const status = String(body.status || "DRAFT").toUpperCase().trim();
     const items = Array.isArray(body.items) ? body.items : [];
 
-    const existing = await prisma.shipmentInvoice.findUnique({
+    // ✅ before snapshot
+    const before = await prisma.shipmentInvoice.findUnique({
       where: { id },
-      select: { id: true, shipmentId: true },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        shipmentId: true,
+        issueDate: true,
+        dueDate: true,
+        status: true,
+        subtotal: true,
+        totalTax: true,
+        tdsRate: true,
+        tdsAmount: true,
+        amount: true,
+        customerGstin: true,
+        placeOfSupply: true,
+        currency: true,
+        items: true,
+      },
     });
-    if (!existing) {
-      return NextResponse.json(
-        { message: "Invoice not found" },
-        { status: 404, headers: noStoreHeaders }
-      );
+
+    if (!before) {
+      return NextResponse.json({ message: "Invoice not found" }, { status: 404, headers: noStoreHeaders });
     }
 
     const totals = calcTotals(items, tdsRate);
@@ -181,34 +193,70 @@ export async function PUT(
       },
     });
 
-    await recalcShipmentInvoiceStatus(existing.shipmentId);
+    await recalcShipmentInvoiceStatus(before.shipmentId);
+
+    // ✅ AUDIT (UPDATE)
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.UPDATE,
+      entityType: AuditEntityType.INVOICE,
+      entityId: updated.id,
+      entityRef: updated.invoiceNumber,
+      description: `Invoice updated: ${updated.invoiceNumber}`,
+      meta: {
+        before: {
+          ...before,
+          issueDate: ymd(before.issueDate),
+          dueDate: ymd(before.dueDate),
+        },
+        after: {
+          id: updated.id,
+          invoiceNumber: updated.invoiceNumber,
+          shipmentId: updated.shipmentId,
+          issueDate: ymd(updated.issueDate),
+          dueDate: ymd(updated.dueDate),
+          status: updated.status,
+          subtotal: Number(updated.subtotal || 0),
+          totalTax: Number(updated.totalTax || 0),
+          tdsRate: Number(updated.tdsRate || 0),
+          tdsAmount: Number(updated.tdsAmount || 0),
+          amount: Number(updated.amount || 0),
+          customerGstin: updated.customerGstin,
+          placeOfSupply: updated.placeOfSupply,
+          currency: updated.currency,
+          itemsCount: Array.isArray(updated.items) ? updated.items.length : 0,
+        },
+      },
+    });
 
     return NextResponse.json(toDetail(updated), { headers: noStoreHeaders });
   } catch (e: any) {
     console.error("PUT /api/invoices/[id] failed:", e);
-    return NextResponse.json(
-      { message: e?.message || "Failed" },
-      { status: 500, headers: noStoreHeaders }
-    );
+    return NextResponse.json({ message: e?.message || "Failed" }, { status: 500, headers: noStoreHeaders });
   }
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const actor = await getActorFromRequest(_req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+
     const { id } = await params;
+
     const inv = await prisma.shipmentInvoice.findUnique({
       where: { id },
-      select: { id: true, shipmentId: true, payments: { select: { id: true } } },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        shipmentId: true,
+        payments: { select: { id: true } },
+      },
     });
 
     if (!inv) {
-      return NextResponse.json(
-        { message: "Invoice not found" },
-        { status: 404, headers: noStoreHeaders }
-      );
+      return NextResponse.json({ message: "Invoice not found" }, { status: 404, headers: noStoreHeaders });
     }
 
     if (inv.payments.length > 0) {
@@ -221,12 +269,22 @@ export async function DELETE(
     await prisma.shipmentInvoice.delete({ where: { id } });
     await recalcShipmentInvoiceStatus(inv.shipmentId);
 
+    // ✅ AUDIT (DELETE)
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.DELETE,
+      entityType: AuditEntityType.INVOICE,
+      entityId: inv.id,
+      entityRef: inv.invoiceNumber,
+      description: `Invoice deleted: ${inv.invoiceNumber}`,
+      meta: { deleted: inv },
+    });
+
     return NextResponse.json({ ok: true }, { headers: noStoreHeaders });
   } catch (e: any) {
     console.error("DELETE /api/invoices/[id] failed:", e);
-    return NextResponse.json(
-      { message: e?.message || "Failed" },
-      { status: 500, headers: noStoreHeaders }
-    );
+    return NextResponse.json({ message: e?.message || "Failed" }, { status: 500, headers: noStoreHeaders });
   }
 }

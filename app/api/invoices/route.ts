@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { recalcShipmentInvoiceStatus } from "@/lib/financials";
+import { logAudit } from "@/lib/audit";
+import { getActorFromRequest } from "@/lib/getActor";
+enum AuditAction {
+  CREATE = "CREATE",
+}
+enum AuditEntityType {
+  INVOICE = "INVOICE",
+}
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -42,7 +50,6 @@ async function generateNextInvoiceNumber(issueDate: Date): Promise<string> {
   const fy = getIndiaFinancialYearLabel(issueDate);
   const prefix = `INDO-${fy}-`;
 
-  // small/medium datasets: safe + simple
   const existing = await prisma.shipmentInvoice.findMany({
     where: { invoiceNumber: { startsWith: prefix } },
     select: { invoiceNumber: true },
@@ -68,10 +75,9 @@ function calcTotals(items: any[], tdsRate: number) {
     const rate = Number(it.rate || 0);
     const taxRate = Number(it.taxRate || 0);
 
-    const taxable =
-      typeof it.taxableValue === "number" ? Number(it.taxableValue) : qty * rate;
+    const taxable = typeof it.taxableValue === "number" ? Number(it.taxableValue) : qty * rate;
 
-    // ✅ IMPORTANT FIX: always compute GST from taxRate (your client sends amount=0)
+    // always compute GST from taxRate
     const gst = taxable * (taxRate / 100);
 
     subtotal += taxable;
@@ -89,9 +95,12 @@ function sumPaid(payments: any[]): number {
   return (payments || []).reduce((a, p) => a + (Number(p?.amount) || 0), 0);
 }
 
-function computeStatus(baseStatus: string, dueDate: Date, balance: number): "DRAFT" | "SENT" | "PAID" | "OVERDUE" {
+function computeStatus(
+  baseStatus: string,
+  dueDate: Date,
+  balance: number
+): "DRAFT" | "SENT" | "PAID" | "OVERDUE" {
   const s = String(baseStatus || "DRAFT").toUpperCase();
-
   if (balance <= 0) return "PAID";
   if (s === "DRAFT") return "DRAFT";
 
@@ -110,7 +119,6 @@ function toRow(inv: any) {
   const balanceAmount = Math.max(0, Number(inv.amount || 0) - paidAmount);
 
   const shipmentRef = inv.shipment?.reference || inv.shipmentId;
-
   const status = computeStatus(inv.status, inv.dueDate, balanceAmount);
 
   return {
@@ -130,8 +138,6 @@ function toRow(inv: any) {
     tdsRate: Number(inv.tdsRate || 0),
     tdsAmount: Number(inv.tdsAmount || 0),
     amount: Number(inv.amount || 0),
-
-    // ✅ NEW
     paidAmount,
     balanceAmount,
   };
@@ -166,6 +172,9 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+
     const body = await req.json();
 
     const shipmentId = String(body.shipmentId || "").trim();
@@ -177,20 +186,13 @@ export async function POST(req: Request) {
     const placeOfSupply = body.placeOfSupply ? String(body.placeOfSupply).trim() : null;
     const tdsRate = Number(body.tdsRate || 0);
     const status = String(body.status || "DRAFT").toUpperCase().trim();
-
     const items = Array.isArray(body.items) ? body.items : [];
 
     if (!shipmentId) {
-      return NextResponse.json(
-        { message: "shipmentId is required" },
-        { status: 400, headers: noStoreHeaders }
-      );
+      return NextResponse.json({ message: "shipmentId is required" }, { status: 400, headers: noStoreHeaders });
     }
     if (!items.length) {
-      return NextResponse.json(
-        { message: "At least 1 invoice item required" },
-        { status: 400, headers: noStoreHeaders }
-      );
+      return NextResponse.json({ message: "At least 1 invoice item required" }, { status: 400, headers: noStoreHeaders });
     }
 
     const shipment = await prisma.shipment.findUnique({
@@ -202,16 +204,11 @@ export async function POST(req: Request) {
       },
     });
     if (!shipment) {
-      return NextResponse.json(
-        { message: "Invalid shipmentId" },
-        { status: 400, headers: noStoreHeaders }
-      );
+      return NextResponse.json({ message: "Invalid shipmentId" }, { status: 400, headers: noStoreHeaders });
     }
 
     const totals = calcTotals(items, tdsRate);
 
-    // ✅ Server-side invoice number generation (global per FY)
-    // If client sends invoiceNumber, we respect it (but it must be unique)
     const makeCreate = async (invoiceNumber: string) => {
       return prisma.shipmentInvoice.create({
         data: {
@@ -241,10 +238,8 @@ export async function POST(req: Request) {
     let created: any;
 
     if (reqInvoiceNumber) {
-      // client provided — just create (unique enforced by DB)
       created = await makeCreate(reqInvoiceNumber);
     } else {
-      // auto-generate + retry if collision
       let lastErr: any = null;
       for (let attempt = 0; attempt < 5; attempt++) {
         const invoiceNumber = await generateNextInvoiceNumber(issueDate);
@@ -253,7 +248,7 @@ export async function POST(req: Request) {
           break;
         } catch (e: any) {
           lastErr = e;
-          if (e?.code === "P2002") continue; // collision -> retry
+          if (e?.code === "P2002") continue;
           throw e;
         }
       }
@@ -261,6 +256,35 @@ export async function POST(req: Request) {
     }
 
     await recalcShipmentInvoiceStatus(shipmentId);
+
+    // ✅ AUDIT (CREATE) using enums
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.CREATE,
+      entityType: AuditEntityType.INVOICE,
+      entityId: created.id,
+      entityRef: created.invoiceNumber,
+      description: `Invoice created: ${created.invoiceNumber} for shipment ${shipment.reference || shipment.id}`,
+      meta: {
+        created: {
+          id: created.id,
+          invoiceNumber: created.invoiceNumber,
+          shipmentId: created.shipmentId,
+          shipmentRef: created.shipment?.reference || null,
+          issueDate: ymd(created.issueDate),
+          dueDate: ymd(created.dueDate),
+          status: created.status,
+          subtotal: Number(created.subtotal || 0),
+          totalTax: Number(created.totalTax || 0),
+          tdsRate: Number(created.tdsRate || 0),
+          tdsAmount: Number(created.tdsAmount || 0),
+          amount: Number(created.amount || 0),
+          itemsCount: Array.isArray(created.items) ? created.items.length : 0,
+        },
+      },
+    });
 
     return NextResponse.json(toRow(created), { headers: noStoreHeaders });
   } catch (e: any) {

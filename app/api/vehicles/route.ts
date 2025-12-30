@@ -1,7 +1,17 @@
-import { NextResponse } from "next/server";
+// app/api/vehicles/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getActorFromRequest } from "@/lib/getActor";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
+
+enum AuditAction {
+  CREATE = "CREATE",
+}
+enum AuditEntityType {
+  VEHICLE = "VEHICLE",
+}
 
 type TransportMode = "ROAD" | "SEA" | "AIR";
 type VehicleOwnership = "OWN" | "RENT";
@@ -41,8 +51,11 @@ async function generateVehicleId(): Promise<string> {
   return `VEH-${String(num).padStart(3, "0")}`;
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const url = new URL(req.url);
     const mode = url.searchParams.get("mode");
 
@@ -94,8 +107,11 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const body = await req.json().catch(() => ({}));
 
     const name = normalizeName(body?.name);
@@ -104,8 +120,7 @@ export async function POST(req: Request) {
     if (!name) return NextResponse.json({ message: "Vehicle name is required" }, { status: 400 });
     if (!number) return NextResponse.json({ message: "Vehicle number is required" }, { status: 400 });
 
-    const id =
-      typeof body.id === "string" && body.id.trim() ? body.id.trim() : await generateVehicleId();
+    const id = typeof body.id === "string" && body.id.trim() ? body.id.trim() : await generateVehicleId();
 
     const transportMode = normalizeMode(body.transportMode);
     const ownership = normalizeOwnership(body.ownership);
@@ -126,7 +141,7 @@ export async function POST(req: Request) {
       if (drivers.length !== driverIds.length) {
         return NextResponse.json({ message: "One or more driverIds are invalid" }, { status: 400 });
       }
-      const bad = drivers.find((d: { id: string; transportMode: string }) => d.transportMode !== transportMode);
+      const bad = drivers.find((d: { transportMode: string }) => d.transportMode !== transportMode);
       if (bad) {
         return NextResponse.json(
           { message: "One or more selected drivers do not match the vehicle transport mode" },
@@ -138,9 +153,7 @@ export async function POST(req: Request) {
     const exists = await prisma.vehicle.findUnique({ where: { number } });
     if (exists) {
       return NextResponse.json(
-        {
-          message: `Vehicle number "${number}" already exists. Please edit the existing vehicle or use a different number.`,
-        },
+        { message: `Vehicle number "${number}" already exists. Please edit the existing vehicle or use a different number.` },
         { status: 409 }
       );
     }
@@ -184,13 +197,30 @@ export async function POST(req: Request) {
       return v;
     });
 
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.CREATE as any,
+      entityType: AuditEntityType.VEHICLE as any,
+      entityId: created.id,
+      entityRef: created.number,
+      description: `Vehicle created: ${created.number}`,
+      meta: {
+        id: created.id,
+        name: created.name,
+        number: created.number,
+        transportMode: created.transportMode,
+        ownership: created.ownership,
+        fuel: created.fuel,
+        driverIds,
+      },
+    });
+
     return NextResponse.json(created, { status: 201 });
   } catch (e: any) {
     if (e?.code === "P2002" && String(e?.meta?.target || "").includes("number")) {
-      return NextResponse.json(
-        { message: "Vehicle number already exists. Use a different vehicle number." },
-        { status: 409 }
-      );
+      return NextResponse.json({ message: "Vehicle number already exists. Use a different vehicle number." }, { status: 409 });
     }
     return NextResponse.json({ message: e?.message || "Failed to create vehicle" }, { status: 500 });
   }

@@ -1,14 +1,32 @@
-import { NextResponse } from "next/server";
+// app/api/quotes/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getActorFromRequest } from "@/lib/getActor";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+enum AuditAction {
+  CREATE = "CREATE",
+  UPDATE = "UPDATE",
+  DELETE = "DELETE",
+}
+enum AuditEntityType {
+  QUOTE = "QUOTE",
+}
 
 const noStoreHeaders = { "Cache-Control": "no-store, max-age=0" };
 
 const clean = (v: any) => String(v ?? "").trim();
 const upper = (v: any, fallback: string) => clean(v || fallback).toUpperCase();
 const pad3 = (n: number) => String(n).padStart(3, "0");
+
+function toJson(value: any) {
+  return JSON.parse(
+    JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? v.toString() : v))
+  );
+}
 
 function safePortCode(port: any, city?: string | null) {
   if (port?.code) return String(port.code).toUpperCase();
@@ -49,15 +67,12 @@ function computeTax(subtotal: number, taxPercent: number, taxesIncluded: boolean
     return { taxPercent: pct, taxAmount: 0, total: subtotal };
   }
 
-  // If taxesIncluded => subtotal is treated as tax-inclusive total.
-  // Tax portion = total - total/(1+r)
   if (taxesIncluded) {
     const base = subtotal / (1 + r);
     const taxAmount = subtotal - base;
     return { taxPercent: pct, taxAmount, total: subtotal };
   }
 
-  // taxesExcluded => add tax on top
   const taxAmount = subtotal * r;
   return { taxPercent: pct, taxAmount, total: subtotal + taxAmount };
 }
@@ -113,9 +128,12 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+
+    const body = await req.json().catch(() => ({}));
     const shipmentId = clean(body.shipmentId);
     if (!shipmentId) return new NextResponse("shipmentId is required", { status: 400 });
 
@@ -184,7 +202,6 @@ export async function POST(req: Request) {
 
     const subtotal = calcSubtotal(charges);
 
-    // ✅ NEW: tax % + mode
     const taxesIncluded = Boolean(body.taxesIncluded);
     const taxPercent = clampPercent(body.taxPercent);
     const { taxAmount, total } = computeTax(subtotal, taxPercent, taxesIncluded);
@@ -198,77 +215,100 @@ export async function POST(req: Request) {
     for (let attempt = 0; attempt < 5; attempt++) {
       const quoteId = await nextQuoteId(year);
       try {
-        const created = await prisma.quote.create({
-          data: {
-            id: quoteId,
+        const created = await prisma.$transaction(async (tx) => {
+          const q = await tx.quote.create({
+            data: {
+              id: quoteId,
+              shipmentId: shipment.id,
+              customerId: shipment.customerId,
 
-            shipmentId: shipment.id,
-            customerId: shipment.customerId,
+              quoteDate,
+              validityDays,
+              validTill,
+              status,
+              preparedBy,
 
-            quoteDate,
-            validityDays,
-            validTill,
-            status,
-            preparedBy,
+              customerName: shipment.customer?.companyName || "",
+              contactPerson: shipment.customer?.contactPerson || null,
+              email: shipment.customer?.email || null,
+              phone: shipment.customer?.phone || null,
+              address: shipment.customer?.address || null,
+              country: shipment.customer?.country || null,
 
-            customerName: shipment.customer?.companyName || "",
-            contactPerson: shipment.customer?.contactPerson || null,
-            email: shipment.customer?.email || null,
-            phone: shipment.customer?.phone || null,
-            address: shipment.customer?.address || null,
-            country: shipment.customer?.country || null,
+              originCity: shipment.originCity,
+              originCountry: shipment.originCountry,
+              originPortCode,
 
-            originCity: shipment.originCity,
-            originCountry: shipment.originCountry,
-            originPortCode,
+              destCity: shipment.destCity,
+              destCountry: shipment.destCountry,
+              destPortCode,
 
-            destCity: shipment.destCity,
-            destCountry: shipment.destCountry,
-            destPortCode,
+              mode: shipment.mode,
+              direction: shipment.direction,
+              commodity: shipment.commodity,
+              incotermCode: shipment.incoterm?.code || null,
 
-            mode: shipment.mode,
-            direction: shipment.direction,
-            commodity: shipment.commodity,
-            incotermCode: shipment.incoterm?.code || null,
+              containerTypeCode: shipment.containerType?.code || null,
+              containersCount,
 
-            containerTypeCode: shipment.containerType?.code || null,
-            containersCount,
+              temperatureRange,
+              specialHandlingNotes: null,
 
-            temperatureRange,
-            specialHandlingNotes: null,
+              totalWeightKg,
+              totalVolumeCbm,
+              packagesCount,
+              packagingType,
 
-            totalWeightKg,
-            totalVolumeCbm,
-            packagesCount,
-            packagingType,
+              currencyCode,
 
-            currencyCode,
+              taxesIncluded,
+              taxPercent,
+              taxAmount,
 
-            // ✅ NEW
-            taxesIncluded,
-            taxPercent,
-            taxAmount,
+              subtotal,
+              total,
 
-            subtotal,
-            total,
+              notesIncluded,
+              notesExcluded,
+              disclaimer,
+            },
+            select: { id: true },
+          });
 
-            notesIncluded,
-            notesExcluded,
-            disclaimer,
-          },
-          select: { id: true },
+          await tx.quoteCharge.createMany({
+            data: charges.map((c: any) => ({
+              quoteId: q.id,
+              name: c.name,
+              chargeType: c.chargeType,
+              currencyCode: c.currencyCode,
+              quantity: c.quantity ?? 1,
+              unitLabel: c.unitLabel ?? null,
+              amount: c.amount ?? 0,
+            })),
+          });
+
+          return q;
         });
 
-        await prisma.quoteCharge.createMany({
-          data: charges.map((c: any) => ({
-            quoteId: created.id,
-            name: c.name,
-            chargeType: c.chargeType,
-            currencyCode: c.currencyCode,
-            quantity: c.quantity ?? 1,
-            unitLabel: c.unitLabel ?? null,
-            amount: c.amount ?? 0,
-          })),
+        await logAudit({
+          actorUserId: actor.id,
+          actorName: actor.name,
+          actorRole: actor.role,
+          action: AuditAction.CREATE as any,
+          entityType: AuditEntityType.QUOTE as any,
+          entityId: created.id,
+          entityRef: created.id,
+          description: `Quote created: ${created.id} for shipment ${shipment.id}`,
+          meta: {
+            shipmentId: shipment.id,
+            customerId: shipment.customerId,
+            currencyCode,
+            subtotal,
+            taxPercent,
+            taxAmount,
+            total,
+            chargesCount: charges.length,
+          },
         });
 
         return NextResponse.json({ id: created.id }, { headers: noStoreHeaders });

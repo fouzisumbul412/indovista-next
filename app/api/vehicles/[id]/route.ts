@@ -1,7 +1,18 @@
-import { NextResponse } from "next/server";
+// app/api/vehicles/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getActorFromRequest } from "@/lib/getActor";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
+
+enum AuditAction {
+  UPDATE = "UPDATE",
+  DELETE = "DELETE",
+}
+enum AuditEntityType {
+  VEHICLE = "VEHICLE",
+}
 
 type TransportMode = "ROAD" | "SEA" | "AIR";
 type VehicleOwnership = "OWN" | "RENT";
@@ -29,7 +40,6 @@ function normalizeName(v: any): string {
   return String(v || "").trim();
 }
 
-// ✅ Works for both Next 14 and Next 15+ where params may be a Promise
 async function getIdFromContext(ctx: any): Promise<string | undefined> {
   const params = await Promise.resolve(ctx?.params);
   const id = params?.id;
@@ -38,8 +48,24 @@ async function getIdFromContext(ctx: any): Promise<string | undefined> {
   return trimmed ? trimmed : undefined;
 }
 
-export async function GET(_req: Request, ctx: any) {
+function pickVehicleAuditFields(v: any) {
+  if (!v) return null;
+  return {
+    id: v.id,
+    name: v.name,
+    number: v.number,
+    transportMode: v.transportMode,
+    ownership: v.ownership,
+    fuel: v.fuel,
+    updatedAt: v.updatedAt,
+  };
+}
+
+export async function GET(req: NextRequest, ctx: any) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const id = await getIdFromContext(ctx);
     if (!id) return NextResponse.json({ message: "Missing vehicle id" }, { status: 400 });
 
@@ -101,8 +127,11 @@ export async function GET(_req: Request, ctx: any) {
   }
 }
 
-export async function PUT(req: Request, ctx: any) {
+export async function PUT(req: NextRequest, ctx: any) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const id = await getIdFromContext(ctx);
     if (!id) return NextResponse.json({ message: "Missing vehicle id" }, { status: 400 });
 
@@ -133,7 +162,7 @@ export async function PUT(req: Request, ctx: any) {
       if (drivers.length !== driverIds.length) {
         return NextResponse.json({ message: "One or more driverIds are invalid" }, { status: 400 });
       }
-      const bad = drivers.find((d: { id: string; transportMode: string }) => d.transportMode !== transportMode);
+      const bad = drivers.find((d: { transportMode: string }) => d.transportMode !== transportMode);
       if (bad) {
         return NextResponse.json(
           { message: "One or more selected drivers do not match the vehicle transport mode" },
@@ -141,6 +170,11 @@ export async function PUT(req: Request, ctx: any) {
         );
       }
     }
+
+    const before = await prisma.vehicle.findUnique({
+      where: { id },
+      select: { id: true, name: true, number: true, transportMode: true, ownership: true, fuel: true, updatedAt: true },
+    });
 
     const updated = await prisma.$transaction(async (tx: any) => {
       const v = await tx.vehicle.update({
@@ -183,13 +217,26 @@ export async function PUT(req: Request, ctx: any) {
       return v;
     });
 
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.UPDATE as any,
+      entityType: AuditEntityType.VEHICLE as any,
+      entityId: id,
+      entityRef: number,
+      description: `Vehicle updated: ${number}`,
+      meta: {
+        before: pickVehicleAuditFields(before),
+        after: pickVehicleAuditFields(updated),
+        driverIds,
+      },
+    });
+
     return NextResponse.json(updated);
   } catch (e: any) {
     if (e?.code === "P2002" && String(e?.meta?.target || "").includes("number")) {
-      return NextResponse.json(
-        { message: "Vehicle number already exists. Use a different vehicle number." },
-        { status: 409 }
-      );
+      return NextResponse.json({ message: "Vehicle number already exists. Use a different vehicle number." }, { status: 409 });
     }
     if (e?.code === "P2025") {
       return NextResponse.json({ message: "Vehicle not found" }, { status: 404 });
@@ -198,12 +245,33 @@ export async function PUT(req: Request, ctx: any) {
   }
 }
 
-export async function DELETE(_req: Request, ctx: any) {
+export async function DELETE(req: NextRequest, ctx: any) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const id = await getIdFromContext(ctx);
     if (!id) return NextResponse.json({ message: "Missing vehicle id" }, { status: 400 });
 
+    const existing = await prisma.vehicle.findUnique({
+      where: { id },
+      select: { id: true, number: true, name: true },
+    });
+
     await prisma.vehicle.delete({ where: { id } });
+
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.DELETE as any,
+      entityType: AuditEntityType.VEHICLE as any,
+      entityId: id,
+      entityRef: existing?.number || id,
+      description: `Vehicle deleted: ${existing?.number || id}`,
+      meta: { id, number: existing?.number || "", name: existing?.name || "" },
+    });
+
     return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ message: e?.message || "Failed to delete vehicle" }, { status: 500 });

@@ -1,14 +1,32 @@
-import { NextResponse } from "next/server";
+// app/api/quotes/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getActorFromRequest } from "@/lib/getActor";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+enum AuditAction {
+  CREATE = "CREATE",
+  UPDATE = "UPDATE",
+  DELETE = "DELETE",
+}
+enum AuditEntityType {
+  QUOTE = "QUOTE",
+}
 
 const noStoreHeaders = { "Cache-Control": "no-store, max-age=0" };
 const clean = (v: any) => String(v ?? "").trim();
 const upper = (v: any, fallback: string) => clean(v || fallback).toUpperCase();
 
 type RouteCtx = { params: Promise<{ id: string }> | { id: string } };
+
+function toJson(value: any) {
+  return JSON.parse(
+    JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? v.toString() : v))
+  );
+}
 
 async function getParamId(ctx: RouteCtx) {
   const p: any = ctx?.params;
@@ -17,7 +35,7 @@ async function getParamId(ctx: RouteCtx) {
 }
 
 function calcSubtotal(charges: { amount: number; quantity?: number | null }[]) {
-  return charges.reduce((sum, c) => sum + (Number(c.amount || 0) * Number(c.quantity ?? 1)), 0);
+  return charges.reduce((sum, c) => sum + Number(c.amount || 0) * Number(c.quantity ?? 1), 0);
 }
 
 function clampPercent(n: any) {
@@ -67,10 +85,13 @@ export async function GET(_: Request, ctx: RouteCtx) {
   }
 }
 
-export async function PATCH(req: Request, ctx: RouteCtx) {
+export async function PATCH(req: NextRequest, ctx: RouteCtx) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+
     const id = await getParamId(ctx);
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
 
     const existing = await prisma.quote.findUnique({
       where: { id },
@@ -85,12 +106,9 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
 
     const currencyCode = body.currencyCode ? clean(body.currencyCode) : existing.currencyCode;
 
-    // ✅ NEW tax fields
     const taxesIncluded = body.taxesIncluded != null ? Boolean(body.taxesIncluded) : Boolean(existing.taxesIncluded);
     const taxPercent =
-      body.taxPercent != null
-        ? clampPercent(body.taxPercent)
-        : clampPercent((existing as any).taxPercent);
+      body.taxPercent != null ? clampPercent(body.taxPercent) : clampPercent((existing as any).taxPercent);
 
     const notesIncluded = body.notesIncluded != null ? (clean(body.notesIncluded) || null) : existing.notesIncluded;
     const notesExcluded = body.notesExcluded != null ? (clean(body.notesExcluded) || null) : existing.notesExcluded;
@@ -120,46 +138,94 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     const subtotal = calcSubtotal(charges);
     const { taxAmount, total } = computeTax(subtotal, taxPercent, taxesIncluded);
 
-    await prisma.quote.update({
-      where: { id },
-      data: {
-        status,
-        validityDays,
-        validTill,
-        preparedBy,
+    const updated = await prisma.$transaction(async (tx) => {
+      const q = await tx.quote.update({
+        where: { id },
+        data: {
+          status,
+          validityDays,
+          validTill,
+          preparedBy,
 
-        currencyCode,
+          currencyCode,
 
-        // ✅ NEW
-        taxesIncluded,
-        taxPercent,
-        taxAmount,
+          taxesIncluded,
+          taxPercent,
+          taxAmount,
 
-        subtotal,
-        total,
+          subtotal,
+          total,
 
-        notesIncluded,
-        notesExcluded,
-        disclaimer,
-      },
+          notesIncluded,
+          notesExcluded,
+          disclaimer,
+        },
+      });
+
+      if (incomingCharges) {
+        await tx.quoteCharge.deleteMany({ where: { quoteId: id } });
+        if (charges.length) {
+          await tx.quoteCharge.createMany({
+            data: charges.map((c: any) => ({
+              quoteId: id,
+              name: c.name,
+              chargeType: c.chargeType,
+              currencyCode: c.currencyCode,
+              quantity: c.quantity ?? 1,
+              unitLabel: c.unitLabel ?? null,
+              amount: c.amount ?? 0,
+            })),
+          });
+        }
+      }
+
+      return q;
     });
 
-    if (incomingCharges) {
-      await prisma.quoteCharge.deleteMany({ where: { quoteId: id } });
-      if (charges.length) {
-        await prisma.quoteCharge.createMany({
-          data: charges.map((c: any) => ({
-            quoteId: id,
-            name: c.name,
-            chargeType: c.chargeType,
-            currencyCode: c.currencyCode,
-            quantity: c.quantity ?? 1,
-            unitLabel: c.unitLabel ?? null,
-            amount: c.amount ?? 0,
-          })),
-        });
-      }
-    }
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.UPDATE as any,
+      entityType: AuditEntityType.QUOTE as any,
+      entityId: id,
+      entityRef: id,
+      description: `Quote updated: ${id}`,
+      meta: {
+        before: toJson({
+          status: existing.status,
+          validityDays: existing.validityDays,
+          validTill: existing.validTill,
+          preparedBy: existing.preparedBy,
+          currencyCode: existing.currencyCode,
+          taxesIncluded: existing.taxesIncluded,
+          taxPercent: (existing as any).taxPercent,
+          taxAmount: (existing as any).taxAmount,
+          subtotal: existing.subtotal,
+          total: existing.total,
+          notesIncluded: existing.notesIncluded,
+          notesExcluded: existing.notesExcluded,
+          disclaimer: existing.disclaimer,
+          chargesCount: existing.charges?.length || 0,
+        }),
+        after: toJson({
+          status: updated.status,
+          validityDays: updated.validityDays,
+          validTill: updated.validTill,
+          preparedBy: updated.preparedBy,
+          currencyCode: updated.currencyCode,
+          taxesIncluded: updated.taxesIncluded,
+          taxPercent: (updated as any).taxPercent,
+          taxAmount: (updated as any).taxAmount,
+          subtotal: updated.subtotal,
+          total: updated.total,
+          notesIncluded: updated.notesIncluded,
+          notesExcluded: updated.notesExcluded,
+          disclaimer: updated.disclaimer,
+          chargesCount: charges.length,
+        }),
+      },
+    });
 
     return NextResponse.json({ id }, { headers: noStoreHeaders });
   } catch (e: any) {
@@ -168,10 +234,33 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
   }
 }
 
-export async function DELETE(_: Request, ctx: RouteCtx) {
+export async function DELETE(req: NextRequest, ctx: RouteCtx) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+
     const id = await getParamId(ctx);
+
+    const existing = await prisma.quote.findUnique({
+      where: { id },
+      select: { id: true, shipmentId: true, customerId: true, customerName: true, currencyCode: true, subtotal: true, total: true, status: true },
+    });
+    if (!existing) return new NextResponse("Not found", { status: 404 });
+
     await prisma.quote.delete({ where: { id } });
+
+    await logAudit({
+      actorName: actor.name,
+      actorUserId: actor.id,
+      actorRole: actor.role,
+      action: AuditAction.DELETE as any,
+      entityType: AuditEntityType.QUOTE as any,
+      entityId: existing.id,
+      entityRef: existing.id,
+      description: `Quote deleted: ${existing.id}`,
+      meta: { deleted: toJson(existing) },
+    });
+
     return NextResponse.json({ ok: true }, { headers: noStoreHeaders });
   } catch (e: any) {
     console.error("DELETE /api/quotes/[id] failed:", e);

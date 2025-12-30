@@ -1,31 +1,32 @@
 // app/api/shipments/[id]/events/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { uploadShipmentDocument } from "@/lib/uploadShipmentDocument";
+import { getActorFromRequest } from "@/lib/getActor";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 const noStoreHeaders = { "Cache-Control": "no-store, max-age=0" };
 
-// ✅ Next.js 16 expects params to be a Promise
+enum AuditAction {
+  CREATE = "CREATE",
+}
+enum AuditEntityType {
+  SHIPMENT_EVENT = "SHIPMENT_EVENT",
+}
+
 type Ctx = { params: Promise<{ id: string }> };
 
-// ✅ robust: get id from params OR parse from URL (/api/shipments/:id/events)
 async function getRawId(req: NextRequest, ctx: Ctx): Promise<string | null> {
-  // 1) from route params
   try {
     const { id } = await ctx.params;
     if (id && String(id).trim()) return String(id).trim();
-  } catch {
-    // ignore
-  }
+  } catch {}
 
-  // 2) fallback: parse from URL path
   try {
     const url = new URL(req.url);
     const parts = url.pathname.split("/").filter(Boolean);
-    // ["api","shipments",":id","events"]
     const idx = parts.indexOf("shipments");
     const id = idx >= 0 ? parts[idx + 1] : null;
     return id ? decodeURIComponent(id) : null;
@@ -37,9 +38,9 @@ async function getRawId(req: NextRequest, ctx: Ctx): Promise<string | null> {
 async function resolveShipmentId(rawId: string) {
   const shipment = await prisma.shipment.findFirst({
     where: { OR: [{ id: rawId }, { reference: rawId }] },
-    select: { id: true },
+    select: { id: true, reference: true },
   });
-  return shipment?.id || null;
+  return shipment ? { id: shipment.id, reference: shipment.reference || "" } : null;
 }
 
 function isAllowedProofMime(mime: string) {
@@ -50,7 +51,6 @@ function isAllowedProofMime(mime: string) {
   return false;
 }
 
-// ✅ Keep the allowed statuses here (matches your UI + types.ts)
 const ALLOWED_SHIPMENT_STATUSES = [
   "BOOKED",
   "PICKED_UP",
@@ -86,14 +86,17 @@ function formString(form: FormData, key: string): string | null {
  */
 export async function GET(req: NextRequest, ctx: Ctx) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+
     const rawId = await getRawId(req, ctx);
     if (!rawId) return new NextResponse("Missing shipment id", { status: 400 });
 
-    const shipmentId = await resolveShipmentId(rawId);
-    if (!shipmentId) return new NextResponse("Shipment not found", { status: 404 });
+    const shipment = await resolveShipmentId(rawId);
+    if (!shipment) return new NextResponse("Shipment not found", { status: 404 });
 
     const events = await prisma.shipmentEvent.findMany({
-      where: { shipmentId },
+      where: { shipmentId: shipment.id },
       orderBy: [{ timestamp: "desc" }],
       select: {
         id: true,
@@ -121,11 +124,14 @@ export async function GET(req: NextRequest, ctx: Ctx) {
  */
 export async function POST(req: NextRequest, ctx: Ctx) {
   try {
+    const actor = await getActorFromRequest(req);
+    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+
     const rawId = await getRawId(req, ctx);
     if (!rawId) return new NextResponse("Missing shipment id", { status: 400 });
 
-    const shipmentId = await resolveShipmentId(rawId);
-    if (!shipmentId) return new NextResponse("Shipment not found", { status: 404 });
+    const shipment = await resolveShipmentId(rawId);
+    if (!shipment) return new NextResponse("Shipment not found", { status: 404 });
 
     const ct = req.headers.get("content-type") || "";
 
@@ -144,7 +150,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       timestampRaw = formString(form, "timestamp");
       location = formString(form, "location");
       description = formString(form, "description");
-      user = formString(form, "user") ?? "System";
+      user = formString(form, "user") ?? actor.name ?? "System";
 
       const pf = form.get("proof");
       proofFile = pf instanceof File ? pf : null;
@@ -155,15 +161,13 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       timestampRaw = body?.timestamp ?? null;
       location = body?.location ?? null;
       description = body?.description ?? null;
-      user = body?.user ?? "System";
+      user = body?.user ?? actor.name ?? "System";
       proofFile = null;
     }
 
     const status = parseShipmentStatus(statusRaw);
     if (!status) {
-      return new NextResponse(`Invalid status. Allowed: ${ALLOWED_SHIPMENT_STATUSES.join(", ")}`, {
-        status: 400,
-      });
+      return new NextResponse(`Invalid status. Allowed: ${ALLOWED_SHIPMENT_STATUSES.join(", ")}`, { status: 400 });
     }
 
     const needsProof = status === "DELIVERED";
@@ -182,12 +186,10 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     if (proofFile) {
       const mime = proofFile.type || "";
       if (!isAllowedProofMime(mime)) {
-        return new NextResponse("Invalid proof type. Allowed: image/*, video/*, application/pdf", {
-          status: 400,
-        });
+        return new NextResponse("Invalid proof type. Allowed: image/*, video/*, application/pdf", { status: 400 });
       }
 
-      const uploaded = await uploadShipmentDocument(shipmentId, proofFile);
+      const uploaded = await uploadShipmentDocument(shipment.id, proofFile);
 
       proofUrl = uploaded.fileUrl;
       proofName = proofFile.name || "Proof";
@@ -195,9 +197,9 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       proofFileSize = uploaded.fileSize ?? null;
     }
 
-    const result = await prisma.$transaction(async (tx: { shipment: { update: (arg0: { where: { id: any; }; data: { status: any; }; select: { id: boolean; }; }) => any; }; shipmentDocument: { create: (arg0: { data: { shipmentId: any; name: string; type: any; status: any; expiryDate: null; fileUrl: string; mimeType: string; fileSize: number | null; }; select: { id: boolean; }; }) => any; }; shipmentEvent: { create: (arg0: { data: { shipmentId: any; status: any; timestamp: Date; location: string | null; description: string | null; user: string | null; proofUrl: string | null; proofName: string | null; proofMimeType: string | null; proofFileSize: number | null; }; select: { id: boolean; shipmentId: boolean; status: boolean; timestamp: boolean; location: boolean; description: boolean; user: boolean; proofUrl: boolean; proofName: boolean; proofMimeType: boolean; proofFileSize: boolean; }; }) => any; }; }) => {
+    const result = await prisma.$transaction(async (tx: any) => {
       const s = await tx.shipment.update({
-        where: { id: shipmentId },
+        where: { id: shipment.id },
         data: { status: status as any },
         select: { id: true },
       });
@@ -205,7 +207,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       if (proofUrl) {
         await tx.shipmentDocument.create({
           data: {
-            shipmentId,
+            shipmentId: shipment.id,
             name: `Proof of Delivery - ${proofName || "Proof"}`,
             type: "OTHER" as any,
             status: "FINAL" as any,
@@ -220,7 +222,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
       const createdEvent = await tx.shipmentEvent.create({
         data: {
-          shipmentId,
+          shipmentId: shipment.id,
           status: status as any,
           timestamp,
           location,
@@ -249,10 +251,30 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       return { shipmentId: s.id, event: createdEvent };
     });
 
-    return NextResponse.json(
-      { ok: true, shipmentId: result.shipmentId, event: result.event },
-      { headers: noStoreHeaders }
-    );
+    await logAudit({
+      actorUserId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: AuditAction.CREATE as any,
+      entityType: AuditEntityType.SHIPMENT_EVENT as any,
+      entityId: result.event.id,
+      entityRef: shipment.reference || shipment.id,
+      description: `Shipment event created: ${status} (${shipment.reference || shipment.id})`,
+      meta: {
+        shipmentId: shipment.id,
+        shipmentRef: shipment.reference,
+        status,
+        timestamp: result.event.timestamp,
+        location,
+        description,
+        user,
+        proof: proofUrl
+          ? { proofUrl, proofName, proofMimeType, proofFileSize }
+          : null,
+      },
+    });
+
+    return NextResponse.json({ ok: true, shipmentId: result.shipmentId, event: result.event }, { headers: noStoreHeaders });
   } catch (e: any) {
     return new NextResponse(e?.message || "Status update failed", { status: 500 });
   }
