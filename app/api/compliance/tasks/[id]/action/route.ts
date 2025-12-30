@@ -1,19 +1,22 @@
-import { NextResponse } from "next/server";
+// app/api/compliance/tasks/[id]/action/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { getActorFromRequest } from "@/lib/getActor";
-import { AuditAction } from "@/lib/generated/prisma/browser";
+import { AuditAction } from "@/lib/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const noStoreHeaders = { "Cache-Control": "no-store, max-age=0" };
 
-type Ctx = { params: { id: string } };
+// ✅ Next.js 16 expects params to be a Promise
+type Ctx = { params: Promise<{ id: string }> };
 
-export async function POST(req: Request, { params }: Ctx) {
+export async function POST(req: NextRequest, { params }: Ctx) {
   try {
-    const id = params?.id;
+    // ✅ await params
+    const { id } = await params;
     if (!id) return new NextResponse("Missing task id", { status: 400 });
 
     const actor = await getActorFromRequest(req);
@@ -33,7 +36,7 @@ export async function POST(req: Request, { params }: Ctx) {
         status: action === "APPROVE" ? "APPROVED" : "REJECTED",
         decidedAt: new Date(),
         decisionNote: note,
-        decidedByUserId: actor.id, // ✅ REAL USER
+        decidedByUserId: actor.id,
       },
       select: {
         id: true,
@@ -59,7 +62,10 @@ export async function POST(req: Request, { params }: Ctx) {
       meta: { taskId: updated.id, taskType: updated.type, note },
     });
 
-    return NextResponse.json({ ok: true, task: updated }, { headers: noStoreHeaders });
+    return NextResponse.json(
+      { ok: true, task: updated },
+      { headers: noStoreHeaders }
+    );
   } catch (e: any) {
     console.error("[POST /api/compliance/tasks/:id/action] Error:", e);
     return new NextResponse(e?.message || "Failed to update task", { status: 500 });
