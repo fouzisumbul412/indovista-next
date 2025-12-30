@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
-import { NextRequest } from "next/server";
+import { cookies } from "next/headers";
 
-export async function GET(req: NextRequest) {
-  const token = req.cookies.get("token")?.value;
+export async function GET() {
+  const token = (await cookies()).get("token")?.value;
 
   if (!token) return NextResponse.json({ user: null }, { status: 401 });
 

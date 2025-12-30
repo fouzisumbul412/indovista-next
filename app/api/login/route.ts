@@ -14,7 +14,8 @@ enum AuditEntityType {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const identifier = String(body?.loginId || body?.email || body?.identifier || "").trim();
+    //const identifier = String(body?.loginId || body?.email || body?.identifier || "").trim();
+    const identifier = String(body?.identifier || body?.loginId || body?.email || "").trim();
     const password = String(body?.password || "");
 
     if (!identifier || !password) {
