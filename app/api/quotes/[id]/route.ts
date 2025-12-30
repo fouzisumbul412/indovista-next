@@ -108,7 +108,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
             unitLabel: clean(c.unitLabel) || null,
             amount: Number(c.amount || 0),
           }))
-        : existing.charges.map((c) => ({
+        : existing.charges.map((c: any) => ({
             name: c.name,
             chargeType: c.chargeType,
             currencyCode: c.currencyCode,

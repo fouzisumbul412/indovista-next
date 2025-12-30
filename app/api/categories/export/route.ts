@@ -10,7 +10,7 @@ export async function GET() {
       orderBy: { createdAt: "asc" },
     });
 
-    const rows = categories.map((c) => ({
+    const rows = categories.map((c: typeof categories[0]) => ({
       ID: c.id,
       Name: c.name,
       "HS Code": c.hsCode || "",

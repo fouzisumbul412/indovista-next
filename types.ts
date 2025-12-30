@@ -30,10 +30,19 @@ export interface Document {
   name: string;
   type: 'INVOICE' | 'PACKING_LIST' | 'BILL_LADING' | 'HEALTH_CERT' | 'ORIGIN_CERT' | 'CUSTOMS_DEC' | 'INSURANCE' | 'OTHER';
   status: DocumentStatus;
-  uploadDate?: string;
-  expiryDate?: string;
-  shipmentRef?: string;
-  customerName?: string;
+  uploadedAt?: Date;
+  expiryDate?: Date | null;
+  fileUrl?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  shipmentId: string;
+  shipment?: {
+    id: string;
+    reference: string;
+    customer: {
+      companyName: string;
+    };
+  };
 }
 
 export interface CargoItem {
@@ -106,11 +115,11 @@ export interface Customer {
   type: CustomerType;
 
   contactPerson: string;
-  phone?: string;
+  phone: string | null;
   email: string;
 
-  address?: string;
-  city?: string;
+  address: string | null;
+  city: string | null;
   country: string;
 
   currency: string;
@@ -118,15 +127,12 @@ export interface Customer {
   usedCredits: number;
   totalAmount: number;
 
-  paymentTerms?: string;
-  
+  paymentTerms: string | null;
   kycStatus: boolean;
   sanctionsCheck: boolean;
-
   status: CustomerStatus;
-
-  createdAt: string;             // Date
-  updatedAt: string;             // Date
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 

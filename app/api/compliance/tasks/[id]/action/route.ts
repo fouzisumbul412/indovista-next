@@ -3,7 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { getActorFromRequest } from "@/lib/getActor";
-import { AuditAction } from "@/lib/generated/prisma/client";
+enum AuditAction {
+  APPROVE = "APPROVE",
+  REJECT = "REJECT",
+} enum AuditEntityType {
+  COMPLIANCE_TASK = "COMPLIANCE_TASK",
+}
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

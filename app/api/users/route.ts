@@ -29,7 +29,7 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json(users.map((u) => ({ ...u, createdAt: u.createdAt.toISOString() })));
+    return NextResponse.json(users.map((u: typeof users[0]) => ({ ...u, createdAt: u.createdAt.toISOString() })));
   } catch (e: any) {
     return NextResponse.json({ message: e?.message || "Failed to fetch users" }, { status: 500 });
   }

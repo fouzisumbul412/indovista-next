@@ -29,7 +29,7 @@ export type Driver = {
   medicalCondition?: string | null;
   notes?: string | null;
 
-  assignedVehicles?: VehicleMini[];
+  vehicles?: { vehicle: VehicleMini }[];
   createdAt?: string;
   updatedAt?: string;
 };

@@ -17,7 +17,14 @@ type Props = {
 const fuelOptions: FuelType[] = ["PETROL", "DIESEL", "CNG", "LPG", "ELECTRIC", "OTHER"];
 const ownershipOptions: VehicleOwnership[] = ["OWN", "RENT"];
 
-const isoDate = (v?: string | null) => (v ? String(v).slice(0, 10) : "");
+//const isoDate = (v?: string | null) => (v ? String(v).slice(0, 10) : "");
+const isoDate = (v?: string | Date | null) => {
+  if (!v) return "";
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  // string case: ISO string or "YYYY-MM-DD"
+  return String(v).slice(0, 10);
+};
+
 
 export function VehicleModal({ isOpen, onClose, onSave, initialData, drivers, enabledModes }: Props) {
   const [saving, setSaving] = useState(false);

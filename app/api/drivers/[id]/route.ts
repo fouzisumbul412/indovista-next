@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { getActorFromRequest } from "@/lib/getActor";
+import { Vehicle } from "@/types/vehicle";
 enum AuditAction {
   UPDATE = "UPDATE",
   DELETE = "DELETE",  
@@ -62,7 +63,7 @@ export async function GET(_: Request, ctx: any) {
       transportMode: d.transportMode,
       medicalCondition: d.medicalCondition,
       notes: d.notes,
-      assignedVehicles: (d.vehicles || []).map((x) => ({
+      assignedVehicles: (d.vehicles ).map((x: { vehicle: Vehicle }) => ({
         id: x.vehicle.id,
         name: x.vehicle.name,
         number: x.vehicle.number,
@@ -109,7 +110,7 @@ export async function PUT(req: Request, ctx: any) {
         return NextResponse.json({ message: "One or more vehicleIds are invalid" }, { status: 400 });
       }
 
-      const bad = vehicles.find((v) => v.transportMode !== transportMode);
+      const bad = vehicles.find((v: { id: string; transportMode: string }) => v.transportMode !== transportMode);
       if (bad) {
         return NextResponse.json(
           { message: "One or more selected vehicles do not match the driver transport mode" },
@@ -118,7 +119,7 @@ export async function PUT(req: Request, ctx: any) {
       }
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await prisma.$transaction(async (tx: any) => {
       const d = await tx.driver.update({
         where: { id },
         data: {
@@ -165,7 +166,7 @@ export async function PUT(req: Request, ctx: any) {
       meta: {
         before: {
           ...before,
-          vehicleIds: (before.vehicles || []).map((v) => v.vehicleId),
+          vehicleIds: (before.vehicles || []).map((v: { vehicleId: string }) => v.vehicleId),
         },
         after: {
           ...updated,
@@ -198,7 +199,7 @@ export async function DELETE(req: Request, ctx: any) {
     });
     if (!before) return NextResponse.json({ message: "Driver not found" }, { status: 404 });
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.vehicleDriver.deleteMany({ where: { driverId: id } });
       await tx.driver.delete({ where: { id } });
     });

@@ -37,7 +37,7 @@ export async function GET() {
           complianceScore,
           pendingReviews,
         },
-        roles: roles.map((r) => ({ role: r.role, count: r._count.role })),
+        roles: roles.map((r: typeof roles[number]) => ({ role: r.role, count: r._count.role })),
       },
       { headers: noStoreHeaders }
     );

@@ -29,7 +29,7 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json(
-      tasks.map((t) => ({
+      tasks.map((t: typeof tasks[number]) => ({
         ...t,
         assignedTo: t.assignedToUser?.name || null,
         dueDate: t.dueDate ? t.dueDate.toISOString().slice(0, 10) : null,

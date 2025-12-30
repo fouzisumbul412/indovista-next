@@ -92,7 +92,7 @@ export async function GET() {
       },
     });
 
-    const list = rows.map((q) => ({
+    const list = rows.map((q: any) => ({
       id: q.id,
       reference: q.id,
       customer: q.customerName,
@@ -158,13 +158,13 @@ export async function POST(req: Request) {
 
     const temperatureRange =
       shipment.temperature?.range ||
-      shipment.items?.map((i) => (i.product as any)?.temperature?.range).find(Boolean) ||
+      shipment.items?.map((i: any) => (i.product as any)?.temperature?.range).find(Boolean) ||
       null;
 
     const items = shipment.items || [];
-    const totalWeightKg = items.reduce((sum, it) => sum + Number(it.weightKg || 0), 0);
-    const packagesCount = items.reduce((sum, it) => sum + Number(it.quantity || 0), 0);
-    const packagingType = items.map((x) => clean(x.packaging)).find((p) => !!p) || null;
+    const totalWeightKg = items.reduce((sum: number, it: any) => sum + Number(it.weightKg || 0), 0);
+    const packagesCount = items.reduce((sum: number, it: any) => sum + Number(it.quantity || 0), 0);
+    const packagingType = items.map((x: any) => clean(x.packaging)).find((p: any) => !!p) || null;
 
     const containersCount = shipment.containerTypeId ? 1 : null;
     const totalVolumeCbm = 0;

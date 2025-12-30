@@ -26,11 +26,11 @@ export type Vehicle = {
   loadingCapacity?: number | null;
 
   rcNumber?: string | null;
-  rcExpiry?: string | null;
-  pollutionExpiry?: string | null;
+  rcExpiry?: Date | null;
+  pollutionExpiry?: Date | null;
 
   isRegistered: boolean;
-  registeredAt?: string | null;
+  registeredAt?: Date | null;
 
   docs?: string | null;
   transportMode: TransportMode;
@@ -40,6 +40,6 @@ export type Vehicle = {
   notes?: string | null;
 
   assignedDrivers?: DriverMini[];
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
 };

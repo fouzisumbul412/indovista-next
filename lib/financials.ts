@@ -74,7 +74,7 @@ export async function recalcShipmentInvoiceStatus(shipmentId: string) {
 
   // Normalize + compute OVERDUE if needed
   const now = new Date();
-  const statuses = invoices.map((i) => {
+  const statuses = invoices.map((i: any) => {
     const st = safeStatus(i.status, "DRAFT");
     const amt = Number(i.amount || 0);
     if (st !== "PAID" && amt > 0 && i.dueDate && new Date(i.dueDate) < now) return "OVERDUE";
@@ -84,10 +84,10 @@ export async function recalcShipmentInvoiceStatus(shipmentId: string) {
   // Priority: OVERDUE > SENT > DRAFT > PAID (but PAID only if all PAID)
   let finalStatus: InvoiceStatusString = "DRAFT";
 
-  const allPaid = statuses.every((s) => s === "PAID");
+  const allPaid = statuses.every((s: InvoiceStatusString) => s === "PAID");
   if (allPaid) finalStatus = "PAID";
-  else if (statuses.some((s) => s === "OVERDUE")) finalStatus = "OVERDUE";
-  else if (statuses.some((s) => s === "SENT" || s === "PAID")) finalStatus = "SENT";
+  else if (statuses.some((s: InvoiceStatusString) => s === "OVERDUE")) finalStatus = "OVERDUE";
+  else if (statuses.some((s: InvoiceStatusString) => s === "SENT" || s === "PAID")) finalStatus = "SENT";
   else finalStatus = "DRAFT";
 
   await prisma.shipment.update({

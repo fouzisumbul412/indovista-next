@@ -40,7 +40,7 @@ export function DriverModal({ isOpen, onClose, onSave, initialData, vehicles, en
     medicalCondition: initialData?.medicalCondition ?? "",
     notes: initialData?.notes ?? "",
 
-    vehicleIds: (initialData?.assignedVehicles ?? []).map((v: any) => v.id),
+    vehicleIds: (initialData?.vehicles ?? []).map((v: any) => v.vehicle.id),
   }));
 
   React.useEffect(() => {
@@ -66,7 +66,7 @@ export function DriverModal({ isOpen, onClose, onSave, initialData, vehicles, en
       medicalCondition: initialData?.medicalCondition ?? "",
       notes: initialData?.notes ?? "",
 
-      vehicleIds: (initialData?.assignedVehicles ?? []).map((v: any) => v.id),
+      vehicleIds: (initialData?.vehicles ?? []).map((v: any) => v.vehicle.id),
     });
   }, [isOpen, initialData, enabledModes]);
 

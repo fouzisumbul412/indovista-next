@@ -259,13 +259,13 @@ export async function GET() {
       },
     });
 
-    const customerIds = Array.from(new Set(rows.map((r) => r.customerId).filter(Boolean)));
+    const customerIds = Array.from(new Set(rows.map((r: any) => r.customerId).filter(Boolean)));
     const portIds = Array.from(
-      new Set(rows.flatMap((r) => [r.originPortId, r.destPortId]).filter((x): x is number => typeof x === "number"))
+      new Set(rows.flatMap((r: any) => [r.originPortId, r.destPortId]).filter((x: any): x is number => typeof x === "number"))
     );
-    const vehicleIds = Array.from(new Set(rows.map((r) => r.vehicleId).filter(Boolean))) as string[];
+    const vehicleIds = Array.from(new Set(rows.map((r: any) => r.vehicleId).filter(Boolean))) as string[];
 
-    const shipmentIds = rows.map((r) => r.id);
+    const shipmentIds = rows.map((r: any) => r.id);
 
     const invoices = shipmentIds.length
       ? await prisma.shipmentInvoice.findMany({
@@ -317,7 +317,7 @@ export async function GET() {
     const gstinMap = new Map(customers.map((c: any) => [c.id, c.gstin || ""]));
     const posMap = new Map(customers.map((c: any) => [c.id, c.placeOfSupply || ""]));
 
-    const portMap = new Map(ports.map((p) => [p.id, p.code]));
+    const portMap = new Map(ports.map((p: any) => [p.id, p.code]));
 
     const vehicleMap = new Map(
       vehicles.map((v: any) => [

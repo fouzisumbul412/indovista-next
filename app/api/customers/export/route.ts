@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import * as XLSX from "xlsx";
 import { Category } from "@/types/category";
 import { CategoryModal } from "@/components/CategoryModal";
+import { Customer } from "@/types";
 export async function GET() {
   try {
     const customers = await prisma.customer.findMany({

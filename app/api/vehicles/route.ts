@@ -55,7 +55,7 @@ export async function GET(req: Request) {
       },
     });
 
-    const shaped = vehicles.map((v) => ({
+    const shaped = vehicles.map((v: any) => ({
       id: v.id,
       name: v.name,
       number: v.number,
@@ -76,7 +76,7 @@ export async function GET(req: Request) {
       medicalSupport: v.medicalSupport,
       notes: v.notes,
 
-      assignedDrivers: (v.drivers || []).map((vd) => ({
+      assignedDrivers: (v.drivers || []).map((vd: any) => ({
         id: vd.driver.id,
         name: vd.driver.name,
         role: vd.driver.role,
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
       if (drivers.length !== driverIds.length) {
         return NextResponse.json({ message: "One or more driverIds are invalid" }, { status: 400 });
       }
-      const bad = drivers.find((d) => d.transportMode !== transportMode);
+      const bad = drivers.find((d: { id: string; transportMode: string }) => d.transportMode !== transportMode);
       if (bad) {
         return NextResponse.json(
           { message: "One or more selected drivers do not match the vehicle transport mode" },
@@ -145,7 +145,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const created = await prisma.$transaction(async (tx) => {
+    const created = await prisma.$transaction(async (tx: any) => {
       const v = await tx.vehicle.create({
         data: {
           id,
