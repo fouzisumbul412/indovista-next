@@ -1,7 +1,12 @@
 "use client";
 
-import Sidebar from "@/components/layout/Sidebar";
-import Topbar from "@/components/layout/Topbar";
+import {
+  SidebarProvider,
+  SidebarInset,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import AppSidebar from "@/components/layout/Sidebar";
+import Topbar from "@/components/layout/Topbar"; // You can keep this, but adjust if needed
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -15,18 +20,23 @@ export default function DashboardLayout({
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !isAuthenticated) router.replace("/login");
-  }, [isAuthenticated, loading]);
+    if (!loading && !isAuthenticated) {
+      router.replace("/login");
+    }
+  }, [isAuthenticated, loading, router]);
 
-  if (loading || !isAuthenticated) return null; // prevent flashing
+  if (loading || !isAuthenticated) {
+    return null;
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Sidebar />
-      <Topbar />
-      <main className="pl-1 lg:pl-64 pt-16 min-h-screen">
-        <div className="p-8 max-w-7xl mx-auto">{children}</div>
-      </main>
-    </div>
+    <SidebarProvider>
+      <AppSidebar />
+
+      <SidebarInset>
+        <Topbar />
+        <main className="flex-1 p-6 lg:p-8 bg-gray-50">{children}</main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
