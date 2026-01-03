@@ -1,397 +1,573 @@
 import jsPDF from "jspdf";
 import type { Invoice, InvoiceLineItem } from "@/types";
 
-/**
- * Update these placeholders for your real company details.
- * Kept as constants so PDF output looks professional.
- */
+/* ======================================================
+   INDO VISTA – MASTER DATA
+====================================================== */
 const COMPANY = {
-  name: "INDO Logistics",
-  addressLine1: "Company Address Line 1",
-  addressLine2: "City, State, PIN",
-  gstin: "27AAAAA0000A1Z5",
-  state: "Maharashtra",
+  name: "INDO VISTA",
+  address: "NCPL, Near 7hills hotel, Madhapur, Hyderabad, Telangana - 500081",
+  phone: "9000000000",
+  email: "indovista@gmail.com",
+  gstin: "36ABCDE1234F1Z5",
+  state: "Telangana",
+  stateCode: "36",
+  logo: "/logo.png",
+  signature: "/signature.png",
+
+  // QR / UPI DETAILS
+  upi: {
+    vpa: "indovista@icici",
+    payeeName: "INDO VISTA",
+    notePrefix: "Invoice",
+  },
+
+  bank: {
+    name: "ICICI BANK LIMITED, JUBILEE HILLS ROAD",
+    account: "123456789012",
+    ifsc: "ICIC0007541",
+    holder: "INDO VISTA",
+  },
 };
 
-function safeDate(dateStr: string): Date {
-  const d = new Date(dateStr);
-  return Number.isNaN(d.getTime()) ? new Date() : d;
-}
-
-/**
- * India Financial Year: Apr -> Mar
- * Example: Dec 2025 => 25/26
- */
-export function getIndiaFinancialYearLabel(date: Date): string {
-  const y = date.getFullYear();
-  const m = date.getMonth(); // 0-based
-  const fyStartYear = m >= 3 ? y : y - 1; // Apr(3) is FY start
-  const fyEndYear = fyStartYear + 1;
-  return `${String(fyStartYear).slice(-2)}/${String(fyEndYear).slice(-2)}`;
-}
-
-function getInvoiceSeqStorageKey(fyLabel: string): string {
-  return `invoice_seq_${fyLabel.replace("/", "_")}`;
-}
-
-function extractSequence(invoiceNumber: string, fyLabel: string): number | null {
-  // INDO-25/26-001
-  const re = new RegExp(`^INDO-${fyLabel.replace("/", "\\/")}-(\\d+)$`);
-  const match = invoiceNumber.match(re);
-  if (!match) return null;
-  const n = Number(match[1]);
-  return Number.isFinite(n) ? n : null;
-}
-
-function getMaxSequenceFromInvoices(existing: Invoice[], fyLabel: string): number {
-  let max = 0;
-  for (const inv of existing) {
-    const seq = extractSequence(inv.invoiceNumber, fyLabel);
-    if (seq && seq > max) max = seq;
-  }
-  return max;
-}
-
-/**
- * Generates next invoice number like INDO-25/26-001.
- * Uses BOTH:
- *  - max in existing invoices (state)
- *  - localStorage counter (browser persistence)
- * Picks the safest next number, then persists it.
- */
-export function generateNextInvoiceNumber(params: {
-  issueDate: string;
-  existingInvoices?: Invoice[];
-}): string {
-  const issue = safeDate(params.issueDate);
-  const fy = getIndiaFinancialYearLabel(issue);
-
-  const existing = params.existingInvoices ?? [];
-  const maxFromList = getMaxSequenceFromInvoices(existing, fy);
-
-  let stored = 0;
-  if (typeof window !== "undefined") {
-    const key = getInvoiceSeqStorageKey(fy);
-    const raw = window.localStorage.getItem(key);
-    const parsed = raw ? Number(raw) : 0;
-    stored = Number.isFinite(parsed) ? parsed : 0;
-  }
-
-  const next = Math.max(maxFromList, stored) + 1;
-
-  if (typeof window !== "undefined") {
-    const key = getInvoiceSeqStorageKey(fy);
-    window.localStorage.setItem(key, String(next));
-  }
-
-  const seq = String(next).padStart(3, "0");
-  return `INDO-${fy}-${seq}`;
-}
-
-/**
- * IMPORTANT:
- * jsPDF built-in fonts (helvetica/times/courier) do NOT support ₹ reliably.
- * That’s why you see a strange "¹" in your PDF.
- * Fix: use "Rs. " for INR (safe ASCII).
- */
-function currencyPrefix(currency: string): string {
-  const c = String(currency || "INR").toUpperCase().trim();
-  if (c === "INR") return "Rs. ";
-  if (c === "USD") return "$";
-  if (c === "GBP") return "£";
-  if (c === "EUR") return "EUR "; // safest (avoid unicode € issues in some viewers)
-  if (c === "AED") return "AED ";
-  return `${c} `;
-}
-
-/**
- * Format number in en-IN and remove any hidden spaces/NBSP that can cause bad spacing in PDF.
- */
-function fmtNumber(n: number): string {
+/* ======================================================
+   HELPERS
+====================================================== */
+function fmt(n: number): string {
   const raw = new Intl.NumberFormat("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(n || 0));
-
-  // remove normal spaces + NBSP + narrow NBSP if any
   return raw.replace(/[\u00A0\u202F\s]/g, "");
 }
 
-function money(n: number, currency: string): string {
-  return `${currencyPrefix(currency)}${fmtNumber(n)}`;
+// NOTE: jsPDF default fonts can break ₹ in some viewers.
+// If you face weird symbol issues, switch to "Rs. " everywhere.
+function rs(n: number): string {
+  return `Rs. ${fmt(n)}`;
 }
 
-function calcItem(item: InvoiceLineItem) {
-  const qty = Number(item.quantity || 0);
-  const rate = Number(item.rate || 0);
-  const taxRate = Number(item.taxRate || 0);
-
-  const taxable = Number(item.taxableValue ?? qty * rate);
-
-  // If amount exists, treat it as (taxable + GST)
-  // const gstAmt =
-  //   typeof item.amount === "number"
-  //     ? Number(item.amount - taxable)
-  //     : Number(taxable * (taxRate / 100));
-  const gstAmt = Number(taxable * (taxRate / 100));
-
-  const total = taxable + gstAmt;
-
-  return { taxable, gstAmt, total, taxRate };
+function safeItems(invoice: Invoice): InvoiceLineItem[] {
+  return (invoice.items ?? []) as InvoiceLineItem[];
 }
 
-/**
- * Builds a clean, printable PDF for an invoice (client-side).
- */
-export function buildInvoicePdf(invoice: Invoice): jsPDF {
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
+function parseStateCode(place?: string | null): string | null {
+  const s = String(place || "").trim();
+  // matches "36-Telangana", "36 - Telangana", "State: 36-Telangana"
+  const m = s.match(/(^|\b)(\d{2})\s*[-–]\s*/);
+  return m ? m[2] : null;
+}
 
-  const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
-  const margin = 40;
+function isInterState(invoice: Invoice): boolean {
+  const posCode = parseStateCode(invoice.placeOfSupply);
+  if (posCode) return posCode !== COMPANY.stateCode;
 
-  const currency = invoice.currency || "INR";
-  const isInterState =
-    !!invoice.placeOfSupply &&
-    invoice.placeOfSupply.toLowerCase() !== COMPANY.state.toLowerCase();
+  // fallback: compare state name string (STRICT BOOLEAN RETURN)
+  const pos = String(invoice.placeOfSupply || "").toLowerCase().trim();
+  return pos.length > 0 && !pos.includes(COMPANY.state.toLowerCase());
+}
 
-  // Header
-  let y = margin;
+/* ======================================================
+   INR AMOUNT IN WORDS (NO EXTERNAL LIB)
+   Supports up to 99,99,99,999 (crores range)
+====================================================== */
+const ONES = [
+  "",
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+  "Eleven",
+  "Twelve",
+  "Thirteen",
+  "Fourteen",
+  "Fifteen",
+  "Sixteen",
+  "Seventeen",
+  "Eighteen",
+  "Nineteen",
+];
+const TENS = [
+  "",
+  "",
+  "Twenty",
+  "Thirty",
+  "Forty",
+  "Fifty",
+  "Sixty",
+  "Seventy",
+  "Eighty",
+  "Ninety",
+];
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text("TAX INVOICE", margin, y);
+function twoDigits(n: number): string {
+  if (n < 20) return ONES[n];
+  const t = Math.floor(n / 10);
+  const o = n % 10;
+  return `${TENS[t]}${o ? " " + ONES[o] : ""}`.trim();
+}
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.text(`Invoice No: ${invoice.invoiceNumber}`, pageW - margin, y, { align: "right" });
+function threeDigits(n: number): string {
+  const h = Math.floor(n / 100);
+  const r = n % 100;
+  let out = "";
+  if (h) out += `${ONES[h]} Hundred`;
+  if (r) out += `${out ? " " : ""}${twoDigits(r)}`;
+  return out.trim();
+}
 
-  y += 18;
-  doc.setFontSize(10);
-  doc.text(`Invoice Date: ${invoice.issueDate}`, margin, y);
-  doc.text(`Due Date: ${invoice.dueDate}`, pageW - margin, y, { align: "right" });
+function toWordsINR(amount: number): string {
+  const rupees = Math.floor(Number(amount || 0));
+  const paise = Math.round((Number(amount || 0) - rupees) * 100);
 
-  y += 14;
-  doc.setDrawColor(220);
-  doc.line(margin, y, pageW - margin, y);
+  if (rupees === 0) return "Zero Rupees Only";
 
-  // Company & Customer blocks
-  y += 18;
+  const crore = Math.floor(rupees / 10000000);
+  const lakh = Math.floor((rupees % 10000000) / 100000);
+  const thousand = Math.floor((rupees % 100000) / 1000);
+  const rest = rupees % 1000;
 
-  const leftX = margin;
-  const rightX = pageW / 2 + 10;
+  const parts: string[] = [];
+  if (crore) parts.push(`${twoDigits(crore)} Crore`);
+  if (lakh) parts.push(`${twoDigits(lakh)} Lakh`);
+  if (thousand) parts.push(`${twoDigits(thousand)} Thousand`);
+  if (rest) parts.push(`${threeDigits(rest)}`);
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("From (Supplier)", leftX, y);
-  doc.text("To (Customer)", rightX, y);
+  let words = parts.join(" ").trim() + " Rupees";
+  if (paise > 0) words += ` And ${twoDigits(paise)} Paise`;
+  words += " Only";
+  return words.replace(/\s+/g, " ").trim();
+}
 
-  y += 14;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
+/* ======================================================
+   IMAGE / QR LOADERS
+====================================================== */
+async function loadImageDataURL(pathOrDataUrl: string): Promise<string | null> {
+  try {
+    if (!pathOrDataUrl) return null;
+    if (pathOrDataUrl.startsWith("data:")) return pathOrDataUrl;
+    if (typeof window === "undefined") return null; // avoid SSR fetch issues
+    const blob = await fetch(pathOrDataUrl).then((r) => r.blob());
+    return await new Promise<string>((res) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result));
+      fr.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
 
-  // Supplier + Customer
-  doc.text(COMPANY.name, leftX, y);
-  doc.text(invoice.customerName || "-", rightX, y);
+async function makeQrDataUrl(text: string): Promise<string | null> {
+  try {
+    // dependency: npm i qrcode
+    const QR = (await import("qrcode")).default;
+    const dataUrl = await QR.toDataURL(text, { margin: 1, width: 220 });
+    return dataUrl;
+  } catch {
+    return null;
+  }
+}
 
-  y += 14;
-  doc.text(COMPANY.addressLine1, leftX, y);
-  doc.text(`GSTIN: ${invoice.customerGstin || "-"}`, rightX, y);
+function buildUpiQrString(params: {
+  vpa: string;
+  payeeName: string;
+  amount: number;
+  note: string;
+}): string {
+  const { vpa, payeeName, amount, note } = params;
+  const a = Number(amount || 0).toFixed(2);
+  const pn = encodeURIComponent(payeeName || "");
+  const tn = encodeURIComponent(note || "");
+  const pa = encodeURIComponent(vpa || "");
+  return `upi://pay?pa=${pa}&pn=${pn}&am=${a}&cu=INR&tn=${tn}`;
+}
 
-  y += 14;
-  doc.text(COMPANY.addressLine2, leftX, y);
-  doc.text(`Place of Supply: ${invoice.placeOfSupply || "-"}`, rightX, y);
+/* ======================================================
+   TOTALS
+====================================================== */
+function calcLine(it: InvoiceLineItem) {
+  const qty = Number(it.quantity || 0);
+  const rate = Number(it.rate || 0);
+  const taxRate = Number(it.taxRate || 0);
+  const taxable =
+    typeof (it as any).taxableValue === "number"
+      ? Number((it as any).taxableValue)
+      : qty * rate;
+  const tax = taxable * (taxRate / 100);
+  const total = taxable + tax;
+  return { taxable, tax, total, taxRate };
+}
 
-  y += 14;
-  doc.text(`GSTIN: ${COMPANY.gstin}`, leftX, y);
-  doc.text(`Shipment Ref: ${invoice.shipmentRef || "-"}`, rightX, y);
+function sumTotals(items: InvoiceLineItem[]) {
+  let taxableTotal = 0;
+  let taxTotal = 0;
+  let grossTotal = 0;
 
-  y += 14;
-  doc.text(`State: ${COMPANY.state}`, leftX, y);
-
-  y += 18;
-  doc.setDrawColor(220);
-  doc.line(margin, y, pageW - margin, y);
-
-  // Table
-  y += 16;
-
-  const tableX = margin;
-  const tableW = pageW - margin * 2;
-
-  /**
-   * FIXED COLUMN WIDTHS:
-   * Previous GST Amt / Total were too narrow (45pt) causing overlap.
-   * New widths keep numbers readable and aligned.
-   * Sum = 515pt (exactly tableW on A4 with 40pt margins).
-   */
-  const cols = [
-    { key: "desc", label: "Description", w: 150, align: "left" as const },
-    { key: "hsn", label: "HSN/SAC", w: 55, align: "left" as const },
-    { key: "qty", label: "Qty", w: 30, align: "right" as const },
-    { key: "rate", label: "Rate", w: 65, align: "right" as const },
-    { key: "taxable", label: "Taxable", w: 65, align: "right" as const },
-    { key: "gstp", label: "GST%", w: 30, align: "right" as const },
-    { key: "gsta", label: "GST Amt", w: 60, align: "right" as const },
-    { key: "total", label: "Total", w: 60, align: "right" as const },
-  ];
-
-  // If tableW differs (custom), scale to fit
-  const sumW = cols.reduce((s, c) => s + c.w, 0);
-  if (sumW !== tableW) {
-    const scale = tableW / sumW;
-    cols.forEach((c) => (c.w = Math.floor(c.w * scale)));
-    const drift = tableW - cols.reduce((s, c) => s + c.w, 0);
-    cols[0].w += drift;
+  for (const it of items) {
+    const { taxable, tax, total } = calcLine(it);
+    taxableTotal += taxable;
+    taxTotal += tax;
+    grossTotal += total;
   }
 
-  const rowPadY = 6;
-  const lineH = 12;
+  return { taxableTotal, taxTotal, grossTotal };
+}
 
-  function drawRow(cells: string[], yTop: number, isHeader = false): number {
-    doc.setFont("helvetica", isHeader ? "bold" : "normal");
-    doc.setFontSize(9);
+/* ======================================================
+   MAIN PDF BUILDER (EXACT BOXED STYLE + LOCKED 1 PAGE)
+====================================================== */
+export async function buildInvoicePdf(invoice: Invoice): Promise<jsPDF> {
+  const doc = new jsPDF("p", "pt", "a4");
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 26;
 
-    // wrap only description
-    const desc = cells[0] ?? "";
-    const descLines = doc.splitTextToSize(desc, cols[0].w - 8);
+  const items = safeItems(invoice);
+  const inter = isInterState(invoice);
 
-    const maxLines = Math.max(descLines.length, 1);
-    const rowH = rowPadY * 2 + maxLines * lineH;
+  const { taxableTotal, taxTotal, grossTotal } = sumTotals(items);
 
-    // page break check
-    if (yTop + rowH > pageH - margin - 140) {
-      doc.addPage();
-      yTop = margin;
-      // re-draw header row on new page
-      yTop = drawRow(cols.map((c) => c.label), yTop, true);
-    }
-
-    let x = tableX;
-
-    for (let i = 0; i < cols.length; i++) {
-      const col = cols[i];
-      doc.setDrawColor(235);
-      doc.rect(x, yTop, col.w, rowH);
-
-      const textX = col.align === "right" ? x + col.w - 4 : x + 4;
-
-      if (i === 0) {
-        doc.text(descLines, x + 4, yTop + rowPadY + lineH - 2);
-      } else {
-        const v = (cells[i] ?? "").replace(/[\u00A0\u202F]/g, " ");
-        doc.text(v, textX, yTop + rowPadY + lineH - 2, { align: col.align });
-      }
-
-      x += col.w;
-    }
-
-    return yTop + rowH;
-  }
-
-  // Header row
-  y = drawRow(cols.map((c) => c.label), y, true);
-
-  // Data rows
-  for (const it of invoice.items || []) {
-    const { taxable, gstAmt, total, taxRate } = calcItem(it);
-    y = drawRow(
-      [
-        it.description || "-",
-        it.hsnCode || "-",
-        String(it.quantity ?? 0),
-        fmtNumber(Number(it.rate ?? 0)),
-        fmtNumber(taxable),
-        String(taxRate),
-        fmtNumber(gstAmt),
-        fmtNumber(total),
-      ],
-      y,
-      false
-    );
-  }
-
-  y += 14;
-
-  // Totals block (right aligned)
-  const subtotal = Number(invoice.subtotal || 0);
-  const totalTax = Number(invoice.totalTax || 0);
-  const invoiceTotal = subtotal + totalTax;
-  const tdsRate = Number(invoice.tdsRate || 0);
-  const tdsAmount = Number(invoice.tdsAmount || 0);
-  const netPayable =
-    typeof invoice.amount === "number" ? Number(invoice.amount) : invoiceTotal - tdsAmount;
-      // Paid / Balance (from payments)
   const paidAmount = Number((invoice as any).paidAmount || 0);
   const balanceAmount =
     typeof (invoice as any).balanceAmount === "number"
       ? Number((invoice as any).balanceAmount)
-      : Math.max(0, netPayable - paidAmount);
+      : Math.max(0, grossTotal - paidAmount);
 
-  if (paidAmount > 0) {
-    totalsLine("Paid Amount", money(paidAmount, currency), y);
-    y += 14;
+  const logoData = await loadImageDataURL(COMPANY.logo);
+  const signData = await loadImageDataURL(COMPANY.signature);
 
-    totalsLine("Balance Due", money(balanceAmount, currency), y, true);
-    y += 18;
-  }
+  const upiNote = `${COMPANY.upi.notePrefix} ${invoice.invoiceNumber}`;
+  const upiText = buildUpiQrString({
+    vpa: COMPANY.upi.vpa,
+    payeeName: COMPANY.upi.payeeName,
+    amount: balanceAmount > 0 ? balanceAmount : grossTotal,
+    note: upiNote,
+  });
+  const qrData = await makeQrDataUrl(upiText);
 
+  /* ===================== HEADER ===================== */
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.8);
 
-  // FIX: consistent columns for totals
-  const totalsRightX = pageW - margin;
-  const totalsLabelX = totalsRightX - 240;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("Tax Invoice", W / 2, 22, { align: "center" });
 
-  function totalsLine(label: string, value: string, yLine: number, bold = false) {
-    // label
-    doc.setFont("helvetica", bold ? "bold" : "normal");
-    doc.setFontSize(10);
-    doc.text(label, totalsLabelX, yLine, { align: "left" });
+  if (logoData) doc.addImage(logoData, "PNG", M, 30, 58, 58);
 
-    // value (use courier mono so digits align cleanly)
-    doc.setFont("courier", bold ? "bold" : "normal");
-    doc.setFontSize(10);
-    doc.text(value, totalsRightX, yLine, { align: "right" });
-  }
+  doc.setFontSize(15);
+  doc.text(COMPANY.name, W / 2, 52, { align: "center" });
 
-  totalsLine("Subtotal (Taxable)", money(subtotal, currency), y);
-  y += 14;
-
-  if (isInterState) {
-    totalsLine("IGST (Output)", money(totalTax, currency), y);
-    y += 14;
-  } else {
-    totalsLine("CGST (Output)", money(totalTax / 2, currency), y);
-    y += 14;
-    totalsLine("SGST (Output)", money(totalTax / 2, currency), y);
-    y += 14;
-  }
-
-  doc.setDrawColor(220);
-  doc.line(totalsLabelX, y + 4, totalsRightX, y + 4);
-  y += 18;
-
-  totalsLine("Invoice Total", money(invoiceTotal, currency), y, true);
-  y += 16;
-
-  if (tdsRate > 0) {
-    totalsLine(`Less: TDS @ ${tdsRate}%`, `- ${money(tdsAmount, currency)}`, y);
-    y += 14;
-  }
-
-  doc.setDrawColor(220);
-  doc.line(totalsLabelX, y + 4, totalsRightX, y + 4);
-  y += 18;
-
-  totalsLine("Net Payable", money(netPayable, currency), y, true);
-  y += 24;
-
-  // Footer note
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(120);
-  doc.text("This is a computer-generated invoice.", margin, pageH - margin);
+  doc.setFontSize(8.5);
+  doc.text(`Reg. Ofc: ${COMPANY.address}`, W / 2, 66, { align: "center" });
+  doc.text(`Phone: ${COMPANY.phone}`, W / 2 - 120, 80);
+  doc.text(`Email: ${COMPANY.email}`, W / 2 + 40, 80);
+  doc.text(`GSTIN: ${COMPANY.gstin}`, W / 2 - 120, 93);
+  doc.text(`State: ${COMPANY.state}-${COMPANY.stateCode}`, W / 2 + 40, 93);
 
-  // reset color
+  doc.rect(M, 28, W - M * 2, 78);
+
+  /* ===================== BILL TO + INVOICE DETAILS ===================== */
+  let y = 112;
+  const boxH = 76;
+  doc.rect(M, y, W - M * 2, boxH);
+  doc.line(W / 2, y, W / 2, y + boxH);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("Bill To:", M + 6, y + 14);
+  doc.text("Invoice Details:", W / 2 + 6, y + 14);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.7);
+
+  doc.text(invoice.customerName || "-", M + 6, y + 30);
+  doc.text(
+    String((invoice as any).customerAddress || "NO 03 A B INDUSTRIAL ESTATE, VILLAGE"),
+    M + 6,
+    y + 42
+  );
+  doc.text(`Contact No: ${(invoice as any).customerPhone || "9999999999"}`, M + 6, y + 54);
+  doc.text(`State: ${invoice.placeOfSupply || "-"}`, M + 6, y + 66);
+
+  doc.text(`No: ${invoice.invoiceNumber}`, W / 2 + 6, y + 30);
+  doc.text(`Date: ${invoice.issueDate}`, W / 2 + 6, y + 42);
+  doc.text(`Place Of Supply: ${invoice.placeOfSupply || "-"}`, W / 2 + 6, y + 54);
+  doc.text(`GSTIN: ${invoice.customerGstin || "-"}`, W / 2 + 6, y + 66);
+
+  /* ===================== ITEMS TABLE ===================== */
+  y += boxH + 10;
+
+  const cols = [
+    { t: "#", w: 24 },
+    { t: "Item name", w: 172 },
+    { t: "HSN/ SAC", w: 66 },
+    { t: "Quantity", w: 52 },
+    { t: "Price/ Unit", w: 88 },
+    { t: "GST", w: 82 },
+    { t: "Amount", w: 85 },
+  ];
+
+  const rowH = 24;
+  const tableX = M;
+  const tableW = W - M * 2;
+
+  const sumW = cols.reduce((a, c) => a + c.w, 0);
+  if (sumW !== tableW) {
+    const scale = tableW / sumW;
+    cols.forEach((c) => (c.w = Math.floor(c.w * scale)));
+    cols[1].w += tableW - cols.reduce((a, c) => a + c.w, 0);
+  }
+
+  let x = tableX;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.8);
+  cols.forEach((c) => {
+    doc.rect(x, y, c.w, rowH);
+    doc.text(c.t, x + 4, y + 16);
+    x += c.w;
+  });
+  y += rowH;
+
+  const taxSummaryBlockHeight = 110;
+  const bottomBlocksHeight = 160;
+  const safeBottomY = H - M - bottomBlocksHeight;
+  const maxRowsFit = Math.max(1, Math.floor((safeBottomY - y - taxSummaryBlockHeight) / rowH));
+
+  const showItems = items.slice(0, maxRowsFit);
+  const hiddenCount = Math.max(0, items.length - showItems.length);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.6);
+
+  showItems.forEach((it, i) => {
+    const { tax, total, taxRate } = calcLine(it);
+
+    const row = [
+      String(i + 1),
+      it.description || "-",
+      it.hsnCode || "",
+      String(it.quantity ?? 0),
+      rs(Number(it.rate ?? 0)).replace("Rs. ", ""),
+      `${rs(tax).replace("Rs. ", "")} (${taxRate}%)`,
+      rs(total).replace("Rs. ", ""),
+    ];
+
+    x = tableX;
+    row.forEach((v, idx) => {
+      doc.rect(x, y, cols[idx].w, rowH);
+      doc.text(String(v), x + 4, y + 16);
+      x += cols[idx].w;
+    });
+
+    y += rowH;
+  });
+
+  if (hiddenCount > 0) {
+    x = tableX;
+    const msg = `+ ${hiddenCount} more item(s) not shown (locked to 1-page print)`;
+    cols.forEach((c, idx) => {
+      doc.rect(x, y, c.w, rowH);
+      if (idx === 1) doc.text(msg, x + 4, y + 16);
+      x += c.w;
+    });
+    y += rowH;
+  }
+
+  x = tableX;
+  doc.setFont("helvetica", "bold");
+  const totalRow = ["", "Total", "", "", "", rs(taxTotal).replace("Rs. ", ""), rs(grossTotal).replace("Rs. ", "")];
+  cols.forEach((c, idx) => {
+    doc.rect(x, y, c.w, rowH);
+    const val = totalRow[idx] || "";
+    if (val) doc.text(val, x + 4, y + 16);
+    x += c.w;
+  });
+  doc.setFont("helvetica", "normal");
+  y += rowH + 8;
+
+  /* ===================== TAX SUMMARY (LEFT) + TOTALS (RIGHT) ===================== */
+  const leftW = (W - M * 2) * 0.62;
+  const rightW = (W - M * 2) - leftW;
+  const blockH = 108;
+
+  doc.rect(M, y, leftW, blockH);
+  doc.rect(M + leftW, y, rightW, blockH);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("Tax Summary:", M + 6, y + 14);
+
+  const ty = y + 22;
+  const innerCols = inter
+    ? [
+        { t: "HSN/ SAC", w: 70 },
+        { t: "Taxable amount", w: 120 },
+        { t: "IGST Rate(%)", w: 70 },
+        { t: "IGST Amt", w: 80 },
+        { t: "Total Tax", w: 80 },
+      ]
+    : [
+        { t: "HSN/ SAC", w: 70 },
+        { t: "Taxable amount", w: 120 },
+        { t: "CGST Amt", w: 80 },
+        { t: "SGST Amt", w: 80 },
+        { t: "Total Tax", w: 80 },
+      ];
+
+  const innerSum = innerCols.reduce((a, c) => a + c.w, 0);
+  const scale2 = (leftW - 2) / innerSum;
+  innerCols.forEach((c) => (c.w = Math.floor(c.w * scale2)));
+  innerCols[1].w += (leftW - 2) - innerCols.reduce((a, c) => a + c.w, 0);
+
+  const innerRowH = 22;
+  let ix = M;
+  doc.setFontSize(8.5);
+  doc.setFont("helvetica", "bold");
+  innerCols.forEach((c) => {
+    doc.rect(ix, ty, c.w, innerRowH);
+    doc.text(c.t, ix + 4, ty + 15);
+    ix += c.w;
+  });
+
+  doc.setFont("helvetica", "normal");
+  const cgst = taxTotal / 2;
+  const sgst = taxTotal / 2;
+
+  const values = inter
+    ? ["", rs(taxableTotal), "18", rs(taxTotal), rs(taxTotal)]
+    : ["", rs(taxableTotal), rs(cgst), rs(sgst), rs(taxTotal)];
+
+  ix = M;
+  innerCols.forEach((c, idx) => {
+    doc.rect(ix, ty + innerRowH, c.w, innerRowH);
+    const v = values[idx] || "";
+    if (v) doc.text(v, ix + 4, ty + innerRowH + 15);
+    ix += c.w;
+  });
+
+  doc.setFont("helvetica", "bold");
+  const tvals = inter
+    ? ["TOTAL", rs(taxableTotal), "", rs(taxTotal), rs(taxTotal)]
+    : ["TOTAL", rs(taxableTotal), rs(cgst), rs(sgst), rs(taxTotal)];
+
+  ix = M;
+  innerCols.forEach((c, idx) => {
+    doc.rect(ix, ty + innerRowH * 2, c.w, innerRowH);
+    const v = tvals[idx] || "";
+    if (v) doc.text(v, ix + 4, ty + innerRowH * 2 + 15);
+    ix += c.w;
+  });
+
+  const rx = M + leftW;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.8);
+
+  const rLine = (label: string, value: string, yLine: number, bold = false) => {
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.text(label, rx + 8, yLine);
+    doc.text(value, rx + rightW - 8, yLine, { align: "right" });
+  };
+
+  rLine("Sub Total", rs(grossTotal), y + 28);
+  rLine("Round Off", rs(0), y + 46);
+  rLine("Total", rs(grossTotal), y + 64, true);
+
+  y += blockH + 6;
+
+  doc.rect(M + leftW, y, rightW, 54);
+  doc.setFont("helvetica", "bold");
+  doc.text("Invoice Amount in Words:", M + leftW + 8, y + 14);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.2);
+  const words = doc.splitTextToSize(toWordsINR(grossTotal), rightW - 16);
+  doc.text(words, M + leftW + 8, y + 30);
+
+  doc.rect(M + leftW, y + 54, rightW, 44);
+  doc.setFontSize(8.6);
+  rLine("Received", rs(paidAmount), y + 72);
+  rLine("Balance", rs(balanceAmount), y + 88);
+
+  doc.rect(M, y, leftW, 44);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("Payment Mode:", M + 6, y + 16);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.6);
+  doc.text(String((invoice as any).paymentMode || "Credit"), M + 6, y + 34);
+
+  y += 104;
+
+  doc.rect(M, y, W - M * 2, 44);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("Terms & Conditions:", M + 6, y + 16);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.4);
+  doc.text("Thanks for doing business with us!", M + 6, y + 34);
+
+  y += 52;
+
+  const footerH = 88;
+  doc.rect(M, y, W - M * 2, footerH);
+  doc.line(W / 2, y, W / 2, y + footerH);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("Bank Details:", M + 6, y + 14);
+
+  const qrX = M + 6;
+  const qrY = y + 22;
+  const qrSize = 62;
+  doc.rect(qrX, qrY, qrSize, qrSize);
+
+  if (qrData) {
+    doc.addImage(qrData, "PNG", qrX + 2, qrY + 2, qrSize - 4, qrSize - 4);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
+    doc.text("SCAN TO PAY", qrX + 8, qrY + qrSize + 10);
+  } else {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text("QR not available", qrX + 6, qrY + 35);
+  }
+
+  const bx = qrX + qrSize + 10;
+  doc.setFontSize(8.2);
+  doc.text(`Name : ${COMPANY.bank.name}`, bx, y + 34);
+  doc.text(`Account No. : ${COMPANY.bank.account}`, bx, y + 48);
+  doc.text(`IFSC code : ${COMPANY.bank.ifsc}`, bx, y + 62);
+  doc.text(`Account holder's name : ${COMPANY.bank.holder}`, bx, y + 76);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text(`For ${COMPANY.name}:`, W / 2 + 6, y + 14);
+
+  const sigBoxX = W / 2 + 10;
+  const sigBoxY = y + 24;
+  const sigBoxW = W - M - sigBoxX - 10;
+  const sigBoxH = 44;
+
+  doc.rect(sigBoxX, sigBoxY, sigBoxW, sigBoxH);
+  if (signData) {
+    doc.addImage(signData, "PNG", sigBoxX + 6, sigBoxY + 6, sigBoxW - 12, sigBoxH - 12);
+  }
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.2);
+  doc.text("Authorized Signatory", W - M - 10, y + 78, { align: "right" });
+
+  doc.setTextColor(120);
+  doc.setFontSize(8);
+  doc.text("This is a computer-generated invoice.", M, H - 14);
   doc.setTextColor(0);
 
   return doc;
@@ -399,13 +575,10 @@ export function buildInvoicePdf(invoice: Invoice): jsPDF {
 
 export function openInvoicePdfInNewTab(invoice: Invoice): void {
   if (typeof window === "undefined") return;
-
-  const doc = buildInvoicePdf(invoice);
-  const blob = doc.output("blob") as Blob;
-
-  const url = URL.createObjectURL(blob);
-  window.open(url, "_blank", "noopener,noreferrer");
-
-  // cleanup later
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  buildInvoicePdf(invoice).then((doc) => {
+    const blob = doc.output("blob") as Blob;
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  });
 }
