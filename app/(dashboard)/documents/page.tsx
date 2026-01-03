@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Search, Plus, FileText, AlertTriangle, Clock } from "lucide-react";
 import { AddShipmentDocumentModal } from "@/app/(dashboard)/documents/components/AddShipmentDocumentModal";
+import { getExpiryLabel } from "@/utils/date";
 
 type DocRow = {
   id: string;
@@ -60,13 +61,16 @@ export default function DocumentList() {
   const pendingCount = useMemo(
     () =>
       documents.filter((d) =>
-        ["PENDING", "MISSING", "NOT_RECEIVED"].includes(String(d.status).toUpperCase())
+        ["PENDING", "MISSING", "NOT_RECEIVED"].includes(
+          String(d.status).toUpperCase()
+        )
       ).length,
     [documents]
   );
 
   const expiringCount = useMemo(
-    () => documents.filter((d) => isExpiringWithinDays(d.expiryDate, 30)).length,
+    () =>
+      documents.filter((d) => isExpiringWithinDays(d.expiryDate, 30)).length,
     [documents]
   );
 
@@ -76,7 +80,9 @@ export default function DocumentList() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
-          <p className="text-gray-500 mt-1">Central repository for all trade documentation</p>
+          <p className="text-gray-500 mt-1">
+            Central repository for all trade documentation
+          </p>
         </div>
 
         <button
@@ -90,32 +96,41 @@ export default function DocumentList() {
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="flex items-center p-6 border-l-4 border-blue-500">
-          <div className="p-3 bg-blue-50 rounded-full mr-4">
-            <FileText className="w-6 h-6 text-blue-600" />
+        {/* Total Documents */}
+        <Card className="flex items-center gap-4 p-5 border-l-4 border-blue-500">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50">
+            <FileText className="h-6 w-6 text-blue-600" />
           </div>
-          <div>
+          <div className="leading-tight">
             <p className="text-sm font-medium text-gray-500">Total Documents</p>
-            <p className="text-2xl font-bold text-gray-900">{documents.length}</p>
+            <p className="text-2xl font-bold text-gray-900">
+              {documents.length}
+            </p>
           </div>
         </Card>
 
-        <Card className="flex items-center p-6 border-l-4 border-orange-500">
-          <div className="p-3 bg-orange-50 rounded-full mr-4">
-            <AlertTriangle className="w-6 h-6 text-orange-600" />
+        {/* Pending / Missing */}
+        <Card className="flex items-center gap-4 p-5 border-l-4 border-orange-500">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-50">
+            <AlertTriangle className="h-6 w-6 text-orange-600" />
           </div>
-          <div>
-            <p className="text-sm font-medium text-gray-500">Pending/Missing</p>
+          <div className="leading-tight">
+            <p className="text-sm font-medium text-gray-500">
+              Pending / Missing
+            </p>
             <p className="text-2xl font-bold text-gray-900">{pendingCount}</p>
           </div>
         </Card>
 
-        <Card className="flex items-center p-6 border-l-4 border-red-500">
-          <div className="p-3 bg-red-50 rounded-full mr-4">
-            <Clock className="w-6 h-6 text-red-600" />
+        {/* Expiring Soon */}
+        <Card className="flex items-center gap-4 p-5 border-l-4 border-red-500">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
+            <Clock className="h-6 w-6 text-red-600" />
           </div>
-          <div>
-            <p className="text-sm font-medium text-gray-500">Expiring Soon (30d)</p>
+          <div className="leading-tight">
+            <p className="text-sm font-medium text-gray-500">
+              Expiring Soon (30d)
+            </p>
             <p className="text-2xl font-bold text-gray-900">{expiringCount}</p>
           </div>
         </Card>
@@ -154,20 +169,30 @@ export default function DocumentList() {
               <tbody className="divide-y divide-gray-100">
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                    <td
+                      colSpan={6}
+                      className="px-6 py-8 text-center text-gray-500"
+                    >
                       No documents found.
                     </td>
                   </tr>
                 )}
 
                 {filtered.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={doc.id}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <FileText className="w-4 h-4 text-gray-400" />
                         <div className="min-w-0">
-                          <div className="font-medium text-gray-900 truncate">{doc.name}</div>
-                          <div className="text-xs text-gray-500">{doc.type}</div>
+                          <div className="font-medium text-gray-900 truncate">
+                            {doc.name}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {doc.type}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -181,14 +206,46 @@ export default function DocumentList() {
                       </Link>
                     </td>
 
-                    <td className="px-6 py-4 text-gray-600">{doc.customerName || "—"}</td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {doc.customerName || "—"}
+                    </td>
 
                     <td className="px-6 py-4">
                       <StatusBadge status={doc.status as any} />
                     </td>
 
                     <td className="px-6 py-4 text-gray-600 font-mono text-xs">
-                      {doc.expiryDate || "—"}
+                      <td className="px-6 py-4 text-xs">
+                        {(() => {
+                          const info = getExpiryLabel(doc.expiryDate);
+
+                          if (!info) {
+                            return <span className="text-gray-400">—</span>;
+                          }
+
+                          if (info.status === "EXPIRED") {
+                            return (
+                              <span className="flex items-center gap-1 font-semibold text-red-600">
+                                <AlertTriangle className="h-3 w-3" />
+                                {info.label}
+                              </span>
+                            );
+                          }
+
+                          if (info.status === "TODAY") {
+                            return (
+                              <span className="flex items-center gap-1 font-semibold text-orange-600">
+                                <Clock className="h-3 w-3" />
+                                {info.label}
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <span className="text-gray-600">{info.label}</span>
+                          );
+                        })()}
+                      </td>
                     </td>
 
                     <td className="px-6 py-4">

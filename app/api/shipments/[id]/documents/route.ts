@@ -16,7 +16,7 @@ enum AuditAction {
   CREATE = "CREATE",
 }
 enum AuditEntityType {
-  SHIPMENT_DOCUMENT = "SHIPMENT_DOCUMENT",
+  SHIPMENT_DOCUMENT = "SHIPMENT",
 }
 
 async function getParams(ctx: any) {
@@ -26,7 +26,11 @@ async function getParams(ctx: any) {
 export async function GET(req: NextRequest, ctx: any) {
   try {
     const actor = await getActorFromRequest(req);
-    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+    if (!actor)
+      return NextResponse.json(
+        { message: "Unauthorized" },
+        { status: 401, headers: noStoreHeaders }
+      );
 
     const { id: shipmentId } = await getParams(ctx);
 
@@ -63,14 +67,21 @@ export async function GET(req: NextRequest, ctx: any) {
       { headers: noStoreHeaders }
     );
   } catch (e: any) {
-    return NextResponse.json({ message: e?.message || "Failed to load shipment documents" }, { status: 500, headers: noStoreHeaders });
+    return NextResponse.json(
+      { message: e?.message || "Failed to load shipment documents" },
+      { status: 500, headers: noStoreHeaders }
+    );
   }
 }
 
 export async function POST(req: NextRequest, ctx: any) {
   try {
     const actor = await getActorFromRequest(req);
-    if (!actor) return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
+    if (!actor)
+      return NextResponse.json(
+        { message: "Unauthorized" },
+        { status: 401, headers: noStoreHeaders }
+      );
 
     const { id: shipmentId } = await getParams(ctx);
 
@@ -79,14 +90,20 @@ export async function POST(req: NextRequest, ctx: any) {
       select: { id: true, reference: true },
     });
     if (!shipment) {
-      return NextResponse.json({ message: "Shipment not found" }, { status: 404, headers: noStoreHeaders });
+      return NextResponse.json(
+        { message: "Shipment not found" },
+        { status: 404, headers: noStoreHeaders }
+      );
     }
 
     const form = await req.formData();
 
     const file = form.get("file");
     if (!(file instanceof File)) {
-      return NextResponse.json({ message: "Missing file" }, { status: 400, headers: noStoreHeaders });
+      return NextResponse.json(
+        { message: "Missing file" },
+        { status: 400, headers: noStoreHeaders }
+      );
     }
 
     const name = String(form.get("name") || file.name || "Document");
@@ -123,7 +140,9 @@ export async function POST(req: NextRequest, ctx: any) {
       entityType: AuditEntityType.SHIPMENT_DOCUMENT as any,
       entityId: created.id,
       entityRef: shipment.reference || shipmentId,
-      description: `Shipment document uploaded: ${name} (${shipment.reference || shipmentId})`,
+      description: `Shipment document uploaded: ${name} (${
+        shipment.reference || shipmentId
+      })`,
       meta: {
         shipmentId,
         shipmentRef: shipment.reference || "",
@@ -140,6 +159,9 @@ export async function POST(req: NextRequest, ctx: any) {
 
     return NextResponse.json(created, { headers: noStoreHeaders });
   } catch (e: any) {
-    return NextResponse.json({ message: e?.message || "Upload failed" }, { status: 500, headers: noStoreHeaders });
+    return NextResponse.json(
+      { message: e?.message || "Upload failed" },
+      { status: 500, headers: noStoreHeaders }
+    );
   }
 }
