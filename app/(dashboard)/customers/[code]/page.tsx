@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Badge";
 import {
@@ -35,6 +36,10 @@ type CustomerShipmentRow = {
 type CustomerWithShipments = Customer & {
   shipments?: CustomerShipmentRow[];
 };
+
+const safe = (v: any) => (v === null || v === undefined ? "—" : String(v));
+const isValidEmail = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
 
 const CustomerDetail = () => {
   const { code } = useParams<{ code: string }>(); // e.g. "CUST-001"
@@ -97,6 +102,10 @@ const CustomerDetail = () => {
     },
   });
 
+  useEffect(() => {
+    if (isError) toast.error(error?.message || "Failed to load customer");
+  }, [isError, error]);
+
   const customerShipments = customer?.shipments || [];
 
   // ✅ delete customer
@@ -107,23 +116,36 @@ const CustomerDetail = () => {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.message || "Failed to delete customer");
       }
+      return true;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       queryClient.removeQueries({ queryKey: ["customer", code] });
+      toast.success("Customer deleted");
       router.push("/customers");
     },
     onError: (err: any) => {
-      console.error(err);
-      alert(err?.message || "Failed to delete customer.");
+      toast.error(err?.message || "Failed to delete customer");
     },
   });
 
-  const handleDelete = async () => {
+  const confirmDelete = () => {
     if (!customer) return;
-    const ok = confirm(`Are you sure you want to delete ${customer.companyName}?`);
-    if (!ok) return;
-    deleteMutation.mutate(customer.customerCode);
+
+    toast.message("Delete customer?", {
+      description: `${customer.companyName} • ${customer.customerCode}`,
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          await toast.promise(deleteMutation.mutateAsync(customer.customerCode), {
+            loading: "Deleting customer…",
+            success: "Customer deleted",
+            error: (e) => e?.message ?? "Failed to delete customer",
+          });
+        },
+      },
+      cancel: { label: "Cancel", onClick: () => {} },
+    });
   };
 
   if (isLoading) {
@@ -131,9 +153,11 @@ const CustomerDetail = () => {
   }
 
   if (isError || !customer) {
-    console.error(error);
     return <div className="p-8 text-center text-gray-500">Customer not found</div>;
   }
+
+  const emailText = String(customer.email || "").trim();
+  const showEmail = emailText ? emailText : "—";
 
   return (
     <>
@@ -169,8 +193,15 @@ const CustomerDetail = () => {
                 {customer.country}
               </span>
 
-              <span className="flex items-center">
-                <Mail className="w-3.5 h-3.5 mr-1" /> {customer.email}
+              <span
+                className="flex items-center"
+                onClick={() => {
+                  if (emailText && !isValidEmail(emailText)) {
+                    toast.error("Invalid email address on this customer");
+                  }
+                }}
+              >
+                <Mail className="w-3.5 h-3.5 mr-1" /> {showEmail}
               </span>
 
               {customer.phone && (
@@ -181,18 +212,18 @@ const CustomerDetail = () => {
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <button
               onClick={() => setIsEditOpen(true)}
-              className="px-4 py-2 border border-gray-300 bg-white rounded-md text-sm font-medium hover:bg-gray-50 text-gray-700 flex items-center"
+              className="w-full sm:w-auto px-4 py-2 border border-gray-300 bg-white rounded-md text-sm font-medium hover:bg-gray-50 text-gray-700 flex items-center justify-center"
             >
               <Pencil className="w-4 h-4 mr-2" /> Edit Profile
             </button>
 
             <button
-              onClick={handleDelete}
+              onClick={confirmDelete}
               disabled={deleteMutation.isPending}
-              className="px-4 py-2 border border-red-200 bg-red-50 rounded-md text-sm font-medium hover:bg-red-100 text-red-700 flex items-center disabled:opacity-60"
+              className="w-full sm:w-auto px-4 py-2 border border-red-200 bg-red-50 rounded-md text-sm font-medium hover:bg-red-100 text-red-700 flex items-center justify-center disabled:opacity-60"
             >
               <Trash2 className="w-4 h-4 mr-2" />
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
@@ -276,7 +307,7 @@ const CustomerDetail = () => {
 
                 <div>
                   <div className="text-xs text-gray-500 mb-1">Compliance Status</div>
-                  <div className="flex items-center gap-3 text-xs">
+                  <div className="flex items-center gap-3 text-xs flex-wrap">
                     <span
                       className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border ${
                         customer.kycStatus
@@ -314,7 +345,8 @@ const CustomerDetail = () => {
                 </Link>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-gray-50 text-gray-500 uppercase font-semibold text-xs">
                     <tr>
@@ -362,6 +394,55 @@ const CustomerDetail = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile cards */}
+              <div className="md:hidden space-y-3">
+                {customerShipments.length === 0 && (
+                  <div className="py-8 text-center text-gray-500">
+                    No shipment history found for this customer.
+                  </div>
+                )}
+
+                {customerShipments.map((s) => (
+                  <div
+                    key={s.id}
+                    className="rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-300"
+                    onClick={() => router.push(`/shipments/${s.id}`)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-blue-600 truncate">{s.reference}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {safe(s.origin?.code)} <ArrowRight className="inline w-3 h-3 mx-1" />{" "}
+                          {safe(s.destination?.code)}
+                        </div>
+                      </div>
+                      <div className="shrink-0">
+                        <StatusBadge status={s.status as any} />
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <div className="text-xs text-gray-500">Mode</div>
+                        <div className="font-medium text-gray-900">{safe(s.mode)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-500">Date</div>
+                        <div className="font-medium text-gray-900">{s.etd || "—"}</div>
+                      </div>
+                      <div className="col-span-2">
+                        <div className="text-xs text-gray-500">Amount</div>
+                        <div className="font-semibold text-gray-900">
+                          {safe(s.financials?.currency)} {safe(s.financials?.revenue)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
           </div>
         </div>
@@ -373,10 +454,10 @@ const CustomerDetail = () => {
         onClose={() => setIsEditOpen(false)}
         customer={customer as any}
         onUpdated={(updated) => {
-          // API now returns shipments too (because PUT re-fetches), but keep safe merge:
           queryClient.setQueryData(["customer", code], (prev: any) => ({ ...(prev || {}), ...updated }));
           queryClient.invalidateQueries({ queryKey: ["customers"] });
           setIsEditOpen(false);
+          toast.success("Customer updated successfully");
         }}
       />
     </>

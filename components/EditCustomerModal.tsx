@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { X, Users } from "lucide-react";
 import { Customer, CustomerStatus, CustomerType } from "@/types";
 
@@ -50,6 +51,16 @@ const toFormState = (customer: Customer): FormState => ({
   sanctionsCheck: customer.sanctionsCheck,
 });
 
+const isValidEmail = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
+
+const normalizePhone = (phone: string) => String(phone || "").replace(/\D/g, ""); // keep digits only
+
+const isValidPhone = (phone: string) => {
+  const p = normalizePhone(phone);
+  return /^\d{7,15}$/.test(p);
+};
+
 const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
   onClose,
   customer,
@@ -58,17 +69,35 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<FormState>(() => toFormState(customer!));
 
+  const trimmed = useMemo(() => {
+    return {
+      ...formData,
+      companyName: formData.companyName.trim(),
+      contactPerson: formData.contactPerson.trim(),
+      phone: formData.phone.trim(),
+      email: formData.email.trim(),
+      address: formData.address.trim(),
+      city: formData.city.trim(),
+      country: formData.country.trim(),
+      paymentTerms: formData.paymentTerms.trim(),
+    };
+  }, [formData]);
+
   const updateMutation = useMutation({
     mutationFn: async () => {
+      const payload = {
+        ...trimmed,
+        creditLimit: Number(trimmed.creditLimit || 0),
+        usedCredits: Number(trimmed.usedCredits || 0),
+        totalAmount: Number(trimmed.totalAmount || 0),
+        phone: normalizePhone(trimmed.phone),
+        email: trimmed.email,
+      };
+
       const res = await fetch(`/api/customers/${customer!.customerCode}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          creditLimit: Number(formData.creditLimit || 0),
-          usedCredits: Number(formData.usedCredits || 0),
-          totalAmount: Number(formData.totalAmount || 0),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -82,23 +111,74 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       queryClient.invalidateQueries({ queryKey: ["customer", customer!.customerCode] });
       onUpdated(updated);
+      toast.success("Customer updated successfully");
+      onClose();
     },
     onError: (err: any) => {
-      console.error(err);
-      alert(err?.message || "Failed to update customer.");
+      toast.error(err?.message || "Failed to update customer");
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const validate = () => {
+    if (!trimmed.companyName) {
+      toast.error("Company Name is required");
+      return false;
+    }
+    if (!trimmed.country) {
+      toast.error("Country is required");
+      return false;
+    }
+if (!trimmed.phone) {
+  toast.error("Contact number is mandatory");
+  return false;
+}
+if (!isValidPhone(trimmed.phone)) {
+  toast.error("Contact number must be 7 to 15 digits (numbers only)");
+  return false;
+}
+
+    if (!trimmed.email) {
+      toast.error("Email is required");
+      return false;
+    }
+    if (!isValidEmail(trimmed.email)) {
+      toast.error("Please enter a valid email address");
+      return false;
+    }
+
+    const nums = [
+      { label: "Credit Limit", value: trimmed.creditLimit },
+      { label: "Used Credits", value: trimmed.usedCredits },
+      { label: "Total Amount", value: trimmed.totalAmount },
+    ];
+
+    for (const n of nums) {
+      const v = Number(n.value || 0);
+      if (Number.isNaN(v) || v < 0) {
+        toast.error(`${n.label} must be a valid number (0 or more)`);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateMutation.mutate();
+    if (!validate()) return;
+
+    await toast.promise(updateMutation.mutateAsync(), {
+      loading: "Saving changes…",
+      success: "Customer updated",
+      error: (e) => e?.message ?? "Failed to update customer",
+    });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+        <div className="flex items-center justify-between p-5 sm:p-6 border-b border-gray-100">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-50 rounded-lg">
               <Users className="w-6 h-6 text-blue-600" />
@@ -118,7 +198,7 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 overflow-y-auto">
           {/* Company Name */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -134,7 +214,7 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
           </div>
 
           {/* Type + Contact Person */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Type</label>
               <select
@@ -150,7 +230,7 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Contact Person
+                Person Name
               </label>
               <input
                 type="text"
@@ -162,24 +242,46 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
           </div>
 
           {/* Phone + Email */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Phone</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Phone / Contact No *
+              </label>
               <input
-                type="text"
-                className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
+  required
+  inputMode="numeric"
+  pattern="\d{7,15}"
+  maxLength={15}
+  type="text"
+  placeholder="Enter 7 to 15 digits"
+  className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+  value={formData.phone}
+  onChange={(e) => {
+    const digitsOnly = e.target.value.replace(/\D/g, "");
+    setFormData({ ...formData, phone: digitsOnly });
+  }}
+  onBlur={() => {
+    if (formData.phone && !isValidPhone(formData.phone)) {
+      toast.error("Contact number must be 7 to 15 digits (numbers only)");
+    }
+  }}
+/>
+
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Email *</label>
               <input
                 required
                 type="email"
+                placeholder="name@company.com"
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onBlur={() => {
+                  if (formData.email && !isValidEmail(formData.email)) {
+                    toast.error("Please enter a valid email address");
+                  }
+                }}
               />
             </div>
           </div>
@@ -196,7 +298,7 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
           </div>
 
           {/* City + Country */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">City</label>
               <input
@@ -221,7 +323,7 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
           </div>
 
           {/* Currency + Credit Limit + Terms */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Currency</label>
               <select
@@ -240,6 +342,7 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
               <label className="block text-sm font-semibold text-gray-700 mb-1">Credit Limit</label>
               <input
                 type="number"
+                min={0}
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.creditLimit}
                 onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
@@ -262,11 +365,12 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
           </div>
 
           {/* Used Credits + Total Amount */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Used Credits</label>
               <input
                 type="number"
+                min={0}
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.usedCredits}
                 onChange={(e) => setFormData({ ...formData, usedCredits: e.target.value })}
@@ -276,6 +380,7 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
               <label className="block text-sm font-semibold text-gray-700 mb-1">Total Amount</label>
               <input
                 type="number"
+                min={0}
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.totalAmount}
                 onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
@@ -284,7 +389,7 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
           </div>
 
           {/* KYC + Sanctions */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input
                 type="checkbox"
@@ -298,7 +403,9 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
               <input
                 type="checkbox"
                 checked={formData.sanctionsCheck}
-                onChange={(e) => setFormData({ ...formData, sanctionsCheck: e.target.checked })}
+                onChange={(e) =>
+                  setFormData({ ...formData, sanctionsCheck: e.target.checked })
+                }
                 className="rounded border-gray-300"
               />
               Sanctions Check Done
@@ -322,18 +429,18 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4">
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+              className="w-full sm:w-auto px-4 py-2 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={updateMutation.isPending}
-              className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60"
+              className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60"
             >
               {updateMutation.isPending ? "Saving..." : "Save Changes"}
             </button>
@@ -346,6 +453,5 @@ const EditCustomerModalInner: React.FC<EditCustomerModalProps> = ({
 
 export const EditCustomerModal: React.FC<EditCustomerModalProps> = (props) => {
   if (!props.isOpen || !props.customer) return null;
-  // key ensures fresh state if you open edit for a different customer
   return <EditCustomerModalInner key={props.customer.customerCode} {...props} />;
 };

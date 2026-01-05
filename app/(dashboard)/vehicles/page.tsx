@@ -348,10 +348,10 @@ export default function VehiclesPage() {
         <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
           <button
             onClick={exportExcel}
-            className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-800 text-sm font-semibold hover:bg-gray-50 shadow-sm transition-colors"
+            className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-lg border border-gray-300 bg-green-600 text-white text-sm font-semibold hover:bg-green-400 shadow-sm transition-colors"
             title="Export all data to Excel"
           >
-            <Download className="w-4 h-4 mr-2" /> Export Excel
+            <Download className="w-4 h-4 mr-2" /> Export
           </button>
 
           {tab === "VEHICLE" && (

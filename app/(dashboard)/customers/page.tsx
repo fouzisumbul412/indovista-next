@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card } from "@/components/ui/Card";
 import { Search, Plus, CheckCircle, XCircle, Download } from "lucide-react";
 import { AddCustomerModal } from "@/components/AddCustomerModal";
@@ -13,6 +14,8 @@ const fetchCustomers = async (): Promise<Customer[]> => {
   if (!res.ok) throw new Error("Failed to fetch customers");
   return res.json();
 };
+
+const safeLower = (v: any) => String(v ?? "").toLowerCase();
 
 const CustomerList = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -30,18 +33,25 @@ const CustomerList = () => {
     queryFn: fetchCustomers,
   });
 
+  useEffect(() => {
+    if (isError) {
+      toast.error((error as any)?.message || "Failed to load customers");
+    }
+  }, [isError, error]);
+
   // called after modal creates a customer
   const handleAdded = () => {
     queryClient.invalidateQueries({ queryKey: ["customers"] });
     setIsModalOpen(false);
+    toast.success("Customer created successfully");
   };
 
-  const formatCurrency = (amount: number, currency: string) =>
+  const formatCurrency = (amount: any, currency: string) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
       currency,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(Number(amount || 0));
 
   const formatCustomerType = (type: Customer["type"]) => {
     switch (type) {
@@ -68,16 +78,74 @@ const CustomerList = () => {
   };
 
   const filtered = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    return customers.filter((c) => {
+    const term = safeLower(searchTerm).trim();
+    if (!term) return customers;
+
+    return customers.filter((c: any) => {
       return (
-        c.companyName.toLowerCase().includes(term) ||
-        c.country.toLowerCase().includes(term) ||
-        c.customerCode.toLowerCase().includes(term) ||
-        (c.contactPerson || "").toLowerCase().includes(term)
+        safeLower(c.companyName).includes(term) ||
+        safeLower(c.country).includes(term) ||
+        safeLower(c.customerCode).includes(term) ||
+        safeLower(c.contactPerson).includes(term)
       );
     });
   }, [customers, searchTerm]);
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const inferFilename = (contentDisposition: string | null) => {
+    if (!contentDisposition) return null;
+    // tries: filename="xxx.xlsx" or filename=xxx.xlsx
+    const m = /filename\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i.exec(contentDisposition);
+    return m?.[1] ? decodeURIComponent(m[1]) : null;
+  };
+
+  const exportCustomers = async () => {
+    if (isLoading) {
+      toast.error("Please wait until customers are loaded");
+      return;
+    }
+    if (!customers?.length) {
+      toast.error("No customers to export");
+      return;
+    }
+
+    await toast.promise(
+      (async () => {
+        const res = await fetch("/api/customers/export", { method: "GET" });
+        if (!res.ok) {
+          let msg = "Failed to export customers";
+          try {
+            const j = await res.json();
+            if (j?.message) msg = j.message;
+          } catch {}
+          throw new Error(msg);
+        }
+
+        const blob = await res.blob();
+        const filename =
+          inferFilename(res.headers.get("content-disposition")) ||
+          `Customers_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+        downloadBlob(blob, filename);
+        return true;
+      })(),
+      {
+        loading: "Preparing export…",
+        success: "Export downloaded",
+        error: (e) => e?.message ?? "Export failed",
+      }
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -85,18 +153,14 @@ const CustomerList = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
-          <p className="text-gray-500 mt-1">
-            Manage importers, distributors, and retail partners
-          </p>
+          <p className="text-gray-500 mt-1">Manage importers, distributors, and retail partners</p>
         </div>
 
-        <div className="flex gap-2">
-          {/* Export Excel */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          {/* Export */}
           <button
-            onClick={() => {
-              window.location.href = "/api/customers/export";
-            }}
-            className="flex items-center px-3 py-2 border bg-green-600 text-white border-gray-300 rounded-lg text-sm hover:bg-green-500"
+            onClick={exportCustomers}
+            className="w-full sm:w-auto flex items-center justify-center px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-500"
           >
             <Download className="w-4 h-4 mr-2" />
             Export
@@ -105,7 +169,7 @@ const CustomerList = () => {
           {/* Add customer */}
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 shadow-sm transition-colors"
+            className="w-full sm:w-auto flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 shadow-sm transition-colors"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add Customer
@@ -115,7 +179,7 @@ const CustomerList = () => {
 
       <div className="space-y-6">
         {/* Search */}
-        <div className="relative max-w-lg">
+        <div className="relative w-full md:max-w-lg">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
@@ -127,13 +191,9 @@ const CustomerList = () => {
         </div>
 
         {/* Loading */}
-        {isLoading && (
-          <div className="text-center text-gray-500 py-12">
-            Loading customers...
-          </div>
-        )}
+        {isLoading && <div className="text-center text-gray-500 py-12">Loading customers...</div>}
 
-        {/* Error */}
+        {/* Error (kept as UI + toast already fires once) */}
         {!isLoading && isError && (
           <div className="text-center text-red-600 py-12">
             {(error as any)?.message || "Failed to load customers"}
@@ -144,7 +204,7 @@ const CustomerList = () => {
         {!isLoading && !isError && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {filtered.map((customer) => (
+              {filtered.map((customer: any) => (
                 <Link
                   href={`/customers/${customer.customerCode}`}
                   key={customer.customerCode}
@@ -152,25 +212,20 @@ const CustomerList = () => {
                 >
                   <Card className="h-full hover:shadow-md transition-shadow cursor-pointer relative border border-gray-200">
                     <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="font-bold text-gray-900 text-lg group-hover:text-blue-600 transition-colors">
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-gray-900 text-lg group-hover:text-blue-600 transition-colors truncate">
                           {customer.companyName}
                         </h3>
                         <p className="text-sm text-gray-500 mt-0.5">
-                          {formatCustomerType(customer.type)} •{" "}
-                          {customer.country}
+                          {formatCustomerType(customer.type)} • {customer.country}
                         </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          Code: {customer.customerCode}
-                        </p>
+                        <p className="text-xs text-gray-400 mt-1">Code: {customer.customerCode}</p>
                         {customer.phone && (
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            Phone: {customer.phone}
-                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">Phone: {customer.phone}</p>
                         )}
                       </div>
 
-                      <div className="flex flex-col items-end gap-1">
+                      <div className="flex flex-col items-end gap-1 shrink-0">
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-100 bg-blue-50 text-blue-600 uppercase">
                           {customer.currency}
                         </span>
@@ -185,53 +240,36 @@ const CustomerList = () => {
                     </div>
 
                     <div className="space-y-3 mb-6">
-                      <div className="flex justify-between items-baseline">
+                      <div className="flex justify-between items-baseline gap-3">
                         <span className="text-sm text-gray-500">Contact</span>
-                        <span className="text-sm font-medium text-gray-900 text-right">
+                        <span className="text-sm font-medium text-gray-900 text-right truncate">
                           {customer.contactPerson || "—"}
                         </span>
                       </div>
 
-                      <div className="flex justify-between items-baseline">
-                        <span className="text-sm text-gray-500">
-                          Credit Limit
-                        </span>
+                      <div className="flex justify-between items-baseline gap-3">
+                        <span className="text-sm text-gray-500">Credit Limit</span>
                         <span className="text-sm font-bold text-gray-900 text-right">
-                          {formatCurrency(
-                            customer.creditLimit || 0,
-                            customer.currency
-                          )}
+                          {formatCurrency(customer.creditLimit || 0, customer.currency)}
                         </span>
                       </div>
 
-                      <div className="flex justify-between items-baseline">
-                        <span className="text-sm text-gray-500">
-                          Used Credits
-                        </span>
+                      <div className="flex justify-between items-baseline gap-3">
+                        <span className="text-sm text-gray-500">Used Credits</span>
                         <span className="text-sm font-bold text-orange-600 text-right">
-                          {formatCurrency(
-                            customer.usedCredits || 0,
-                            customer.currency
-                          )}
+                          {formatCurrency(customer.usedCredits || 0, customer.currency)}
                         </span>
                       </div>
 
-                      <div className="flex justify-between items-baseline">
-                        <span className="text-sm text-gray-500">
-                          Total Amount
-                        </span>
+                      <div className="flex justify-between items-baseline gap-3">
+                        <span className="text-sm text-gray-500">Total Amount</span>
                         <span className="text-sm font-bold text-gray-900 text-right">
-                          {formatCurrency(
-                            customer.totalAmount || 0,
-                            customer.currency
-                          )}
+                          {formatCurrency(customer.totalAmount || 0, customer.currency)}
                         </span>
                       </div>
 
-                      <div className="flex justify-between items-baseline">
-                        <span className="text-sm text-gray-500">
-                          Payment Terms
-                        </span>
+                      <div className="flex justify-between items-baseline gap-3">
+                        <span className="text-sm text-gray-500">Payment Terms</span>
                         <span className="text-sm font-medium text-gray-900 text-right">
                           {customer.paymentTerms || "—"}
                         </span>
@@ -241,9 +279,7 @@ const CustomerList = () => {
                     <div className="pt-4 border-t border-gray-100 flex items-center gap-4">
                       <div
                         className={`flex items-center gap-1.5 text-xs font-medium ${
-                          customer.kycStatus
-                            ? "text-green-600"
-                            : "text-gray-400"
+                          customer.kycStatus ? "text-green-600" : "text-gray-400"
                         }`}
                       >
                         {customer.kycStatus ? (
@@ -256,9 +292,7 @@ const CustomerList = () => {
 
                       <div
                         className={`flex items-center gap-1.5 text-xs font-medium ${
-                          customer.sanctionsCheck
-                            ? "text-green-600"
-                            : "text-gray-400"
+                          customer.sanctionsCheck ? "text-green-600" : "text-gray-400"
                         }`}
                       >
                         {customer.sanctionsCheck ? (
