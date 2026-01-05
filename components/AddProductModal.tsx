@@ -1,8 +1,10 @@
+// components/AddProductModal.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { X, Package, Snowflake, Leaf, Thermometer } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Product } from "@/types/product";
 import { Category } from "@/types/category";
 import type { TemperaturePreset } from "@/types/temperature";
@@ -20,7 +22,6 @@ type ProductPayload = {
   packSize?: string | null;
   shelfLife?: string | null;
 
-  // ✅ Pricing
   unitPrice?: number | null;
   currencyCode: string;
 
@@ -33,7 +34,7 @@ type ProductPayload = {
 interface AddProductModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (product: ProductPayload) => void;
+  onSave: (product: ProductPayload) => Promise<any> | any;
   initialData?: Product | null;
 }
 
@@ -68,16 +69,26 @@ const EMPTY_FORM: ProductPayload = {
   temperatureId: null,
   packSize: "",
   shelfLife: "",
-
   unitPrice: null,
   currencyCode: "INR",
-
   unitsPerCarton: null,
   cartonsPerPallet: null,
   notes: "",
 };
 
-export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
+const normalizeText = (v: any) => String(v ?? "").trim();
+
+const isValidHsCode = (v: string) => {
+  if (!v) return true;
+  return /^[0-9A-Za-z.\-\/ ]{2,20}$/.test(v);
+};
+
+export const AddProductModal: React.FC<AddProductModalProps> = ({
+  isOpen,
+  onClose,
+  onSave,
+  initialData,
+}) => {
   const { data: categories = EMPTY_CATEGORIES } = useQuery<Category[]>({
     queryKey: ["categories"],
     queryFn: fetchCategories,
@@ -102,8 +113,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
   const defaultCategoryId = useMemo(() => categories?.[0]?.id ?? "", [categories]);
 
   const [formData, setFormData] = useState<ProductPayload>(EMPTY_FORM);
-
-  // ✅ true only when user chooses a specific preset (not "Use category default")
   const [customTemp, setCustomTemp] = useState(false);
 
   const selectedCategory = useMemo(() => {
@@ -115,7 +124,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
     return temps.find((t) => t.id === selectedCategory.temperatureId) ?? null;
   }, [selectedCategory, temps]);
 
-  // ✅ Initialize form when modal opens / switching edit vs add
   useEffect(() => {
     if (!isOpen) return;
 
@@ -129,10 +137,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
         temperatureId: initialData.temperatureId ?? null,
         packSize: initialData.packSize ?? "",
         shelfLife: initialData.shelfLife ?? "",
-
         unitPrice: initialData.unitPrice ?? null,
         currencyCode: (initialData.currencyCode ?? "INR").toUpperCase(),
-
         unitsPerCarton: initialData.unitsPerCarton ?? null,
         cartonsPerPallet: initialData.cartonsPerPallet ?? null,
         notes: initialData.notes ?? "",
@@ -150,7 +156,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
     setCustomTemp(false);
   }, [isOpen, initialData, defaultCategoryId]);
 
-  // ✅ When categories finish loading, set default category only if empty (add mode)
   useEffect(() => {
     if (!isOpen) return;
     if (initialData) return;
@@ -164,24 +169,100 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const validate = () => {
+    const name = normalizeText(formData.name);
+    const categoryId = normalizeText(formData.categoryId);
+
+    if (!name) {
+      toast.error("Product name is required");
+      return false;
+    }
+    if (name.length < 2) {
+      toast.error("Product name must be at least 2 characters");
+      return false;
+    }
+    if (!categoryId) {
+      toast.error("Category is required");
+      return false;
+    }
+
+    const hs = normalizeText(formData.hsCode);
+    if (hs && !isValidHsCode(hs)) {
+      toast.error("HS Code looks invalid");
+      return false;
+    }
+
+    if (formData.unitPrice != null) {
+      const n = Number(formData.unitPrice);
+      if (Number.isNaN(n) || n < 0) {
+        toast.error("Unit price must be a valid number");
+        return false;
+      }
+    }
+
+    if (!normalizeText(formData.currencyCode)) {
+      toast.error("Currency is required");
+      return false;
+    }
+
+    if (formData.unitsPerCarton != null) {
+      const v = Number(formData.unitsPerCarton);
+      if (!Number.isFinite(v) || v < 0) {
+        toast.error("Units / Carton must be a valid number");
+        return false;
+      }
+    }
+
+    if (formData.cartonsPerPallet != null) {
+      const v = Number(formData.cartonsPerPallet);
+      if (!Number.isFinite(v) || v < 0) {
+        toast.error("Cartons / Pallet must be a valid number");
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    if (!validate()) return;
+
+    const payload: ProductPayload = {
+      ...formData,
+      name: normalizeText(formData.name),
+      hsCode: normalizeText(formData.hsCode) || null,
+      packSize: normalizeText(formData.packSize) || null,
+      shelfLife: normalizeText(formData.shelfLife) || null,
+      notes: normalizeText(formData.notes) || null,
+      currencyCode: normalizeText(formData.currencyCode).toUpperCase(),
+    };
+
+    await toast.promise(Promise.resolve(onSave(payload)), {
+      loading: initialData ? "Updating product…" : "Saving product…",
+      //success: initialData ? "Product updated successfully" : "Product created successfully",
+      error: (e: any) => e?.message ?? "Failed to save product",
+    });
   };
 
   const tempSelectValue = formData.temperatureId == null ? "" : String(formData.temperatureId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm min-h-9/12 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh]">
-        <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-50 rounded-lg">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm p-4">
+      {/* Mobile: bottom sheet feel | Desktop: centered */}
+      <div className="mx-auto w-full max-w-lg h-[88vh] md:h-auto md:max-h-[85vh] bg-white rounded-xl shadow-2xl flex flex-col md:mt-10">
+        <div className="flex items-center justify-between p-4 border-b border-gray-100 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 bg-blue-50 rounded-lg shrink-0">
               <Package className="w-6 h-6 text-blue-600" />
             </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">{initialData ? "Edit Product" : "Add Product"}</h2>
-              <p className="text-sm text-gray-500">{initialData ? "Update product details" : "Add new item to master list"}</p>
+            <div className="min-w-0">
+              <h2 className="text-lg md:text-xl font-bold text-gray-900 truncate">
+                {initialData ? "Edit Product" : "Add Product"}
+              </h2>
+              <p className="text-xs md:text-sm text-gray-500 truncate">
+                {initialData ? "Update product details" : "Add new item to master list"}
+              </p>
             </div>
           </div>
 
@@ -190,7 +271,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-3 overflow-y-auto max-h-[calc(80vh-72px)]">
+        <form onSubmit={handleSubmit} className="p-4 space-y-3 overflow-y-auto">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Product Name *</label>
             <input
@@ -202,7 +283,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Type</label>
               <div className="flex bg-gray-100 p-1 rounded-lg">
@@ -210,7 +291,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
                   type="button"
                   onClick={() => setFormData({ ...formData, type: "FROZEN" })}
                   className={`flex-1 py-1.5 text-xs font-semibold rounded flex items-center justify-center gap-1 transition-all ${
-                    formData.type === "FROZEN" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    formData.type === "FROZEN"
+                      ? "bg-white text-blue-600 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
                   <Snowflake className="w-3 h-3" /> Frozen
@@ -219,7 +302,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
                   type="button"
                   onClick={() => setFormData({ ...formData, type: "SPICE" })}
                   className={`flex-1 py-1.5 text-xs font-semibold rounded flex items-center justify-center gap-1 transition-all ${
-                    formData.type === "SPICE" ? "bg-white text-green-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    formData.type === "SPICE"
+                      ? "bg-white text-green-600 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
                   <Leaf className="w-3 h-3" /> Spice
@@ -254,7 +339,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">HS Code</label>
               <input
@@ -263,6 +348,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
                 value={formData.hsCode ?? ""}
                 onChange={(e) => setFormData({ ...formData, hsCode: e.target.value })}
               />
+              <p className="text-[11px] text-gray-400 mt-1">Optional. Example: 0904 / 2106</p>
             </div>
 
             <div>
@@ -297,14 +383,13 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
                   Category default: {selectedCategoryDefaultTemp.name} — {selectedCategoryDefaultTemp.range}
                 </p>
               )}
-
               {!customTemp && !selectedCategoryDefaultTemp && (
                 <p className="text-xs text-gray-400 mt-1">No default temperature set on selected category</p>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Pack Size</label>
               <input
@@ -328,13 +413,13 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
             </div>
           </div>
 
-          {/* ✅ Pricing */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Unit Price</label>
               <input
                 type="number"
                 step="0.01"
+                min={0}
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.unitPrice ?? ""}
                 onChange={(e) =>
@@ -363,11 +448,12 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Units / Carton</label>
               <input
                 type="number"
+                min={0}
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.unitsPerCarton ?? ""}
                 onChange={(e) =>
@@ -382,6 +468,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
               <label className="block text-sm font-semibold text-gray-700 mb-1">Cartons / Pallet</label>
               <input
                 type="number"
+                min={0}
                 className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.cartonsPerPallet ?? ""}
                 onChange={(e) =>
@@ -397,24 +484,24 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Notes</label>
             <textarea
-              rows={1}
+              rows={2}
               className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               value={formData.notes ?? ""}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2">
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-gray-100 mt-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+              className="w-full sm:w-auto px-4 py-2 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+              className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
             >
               {initialData ? "Update Product" : "Save Product"}
             </button>
