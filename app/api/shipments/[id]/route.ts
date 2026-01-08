@@ -97,7 +97,7 @@ async function findShipmentRecord(idOrRefRaw: string) {
       },
     });
     if (s) return s;
-  } catch {}
+  } catch { }
 
   if (/^\d+$/.test(idOrRef)) {
     try {
@@ -111,7 +111,7 @@ async function findShipmentRecord(idOrRefRaw: string) {
         },
       });
       if (s) return s;
-    } catch {}
+    } catch { }
   }
 
   return prisma.shipment.findFirst({
@@ -140,9 +140,9 @@ async function shapeShipment(idOrRef: string) {
 
       s.vehicleId
         ? prisma.vehicle.findUnique({
-            where: { id: s.vehicleId },
-            include: { drivers: { include: { driver: true } } },
-          })
+          where: { id: s.vehicleId },
+          include: { drivers: { include: { driver: true } } },
+        })
         : Promise.resolve(null),
 
       s.driverId ? prisma.driver.findUnique({ where: { id: s.driverId } }) : Promise.resolve(null),
@@ -187,24 +187,25 @@ async function shapeShipment(idOrRef: string) {
 
   return {
     id: s.id,
-    reference: s.reference || "",
-    masterDoc: s.masterDoc || "",
+    reference: s.reference ?? "",
+    masterDoc: s.masterDoc ?? "",
 
-    customer: s.customer?.companyName || "",
+    customer: s.customer?.companyName ?? "",
 
     origin: {
       code: originCode,
-      city: s.originCity || "",
-      country: s.originCountry || "",
-      contact: s.originContact || "",
-      portId: s.originPortId || null,
+      city: s.originCity ?? "",
+      country: s.originCountry ?? "",
+      contact: s.originContact ?? "",
+      portId: s.originPortId ?? null,
     },
+
     destination: {
       code: destCode,
-      city: s.destCity || "",
-      country: s.destCountry || "",
-      contact: s.destContact || "",
-      portId: s.destPortId || null,
+      city: s.destCity ?? "",
+      country: s.destCountry ?? "",
+      contact: s.destContact ?? "",
+      portId: s.destPortId ?? null,
     },
 
     mode: s.mode,
@@ -217,118 +218,122 @@ async function shapeShipment(idOrRef: string) {
     etd: s.etd ? s.etd.toISOString().slice(0, 10) : "",
     eta: s.eta ? s.eta.toISOString().slice(0, 10) : "",
 
-    incoterm: incoterm ? { id: (incoterm as any).id, code: (incoterm as any).code, name: (incoterm as any).name } : null,
+    incoterm: incoterm
+      ? { id: incoterm.id, code: incoterm.code, name: incoterm.name }
+      : null,
+
     containerType: containerType
-      ? { id: (containerType as any).id, code: (containerType as any).code, name: (containerType as any).name }
+      ? { id: containerType.id, code: containerType.code, name: containerType.name }
       : null,
 
     temperature: temperature
       ? {
-          id: (temperature as any).id,
-          name: (temperature as any).name,
-          range: (temperature as any).range,
-          tolerance: (temperature as any).tolerance,
-          setPoint: (temperature as any).setPoint,
-          unit: (temperature as any).unit,
-          alerts: 0,
-        }
+        id: temperature.id,
+        name: temperature.name,
+        range: temperature.range,
+        tolerance: temperature.tolerance,
+        setPoint: temperature.setPoint,
+        unit: temperature.unit,
+      }
       : null,
 
     vehicle: vehicle
       ? {
-          id: (vehicle as any).id,
-          name: (vehicle as any).name,
-          number: (vehicle as any).number,
-          transportMode: (vehicle as any).transportMode,
-          assignedDrivers: (((vehicle as any).drivers || []) as any[])
-            .map((vd: any) => vd?.driver)
-            .filter(Boolean)
-            .map((dr: any) => ({
-              id: dr.id,
-              name: dr.name,
-              role: dr.role,
-              contactNumber: dr.contactNumber ?? null,
-            })),
-        }
+        id: vehicle.id,
+        name: vehicle.name,
+        number: vehicle.number,
+        transportMode: vehicle.transportMode,
+        assignedDrivers: (vehicle.drivers ?? [])
+          .map((vd: any) => vd.driver)
+          .filter(Boolean)
+          .map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            role: d.role,
+            contactNumber: d.contactNumber ?? null,
+          })),
+      }
       : null,
 
     driver: driver
       ? {
-          id: (driver as any).id,
-          name: (driver as any).name,
-          role: (driver as any).role,
-          transportMode: (driver as any).transportMode,
-          contactNumber: (driver as any).contactNumber ?? null,
-          licenseNumber: (driver as any).licenseNumber ?? null,
-        }
+        id: driver.id,
+        name: driver.name,
+        role: driver.role,
+        transportMode: driver.transportMode,
+        contactNumber: driver.contactNumber ?? null,
+        licenseNumber: driver.licenseNumber ?? null,
+      }
       : null,
 
-    cargo: (s.items || []).map((it: any) => ({
+    cargo: (s.items ?? []).map((it: any) => ({
       id: it.id,
       productId: it.productId,
-      productName: it.product?.name || "Product",
-      hsCode: it.product?.hsCode || "",
-      quantity: it.quantity,
-      unit: it.unit,
+      productName: it.product?.name ?? "Product",
+      hsCode: it.product?.hsCode ?? "",
+      quantity: it.quantity ?? 0,
+      unit: it.unit ?? "Unit",
       weightKg: it.weightKg ?? 0,
-      tempReq: (it.product as any)?.temperature || (it.product as any)?.temperatureId || "N/A",
-      packaging: it.packaging || "",
+      tempReq: it.product?.temperature ?? "Ambient",
+      packaging: it.packaging ?? "",
     })),
 
-    documents: (s.documents || []).map((doc: any) => ({
+    documents: (s.documents ?? []).map((doc: any) => ({
       id: doc.id,
       name: doc.name,
       type: doc.type,
       status: doc.status,
-      uploadDate: doc.uploadedAt ? doc.uploadedAt.toISOString().slice(0, 10) : undefined,
-      expiryDate: doc.expiryDate ? doc.expiryDate.toISOString().slice(0, 10) : undefined,
-      fileUrl: doc.fileUrl,
-      mimeType: doc.mimeType,
-      fileSize: doc.fileSize,
+      uploadDate: doc.uploadedAt ? doc.uploadedAt.toISOString().slice(0, 10) : "",
+      expiryDate: doc.expiryDate ? doc.expiryDate.toISOString().slice(0, 10) : "",
+      fileUrl: doc.fileUrl ?? "",
+      mimeType: doc.mimeType ?? "",
+      fileSize: doc.fileSize ?? null,
     })),
 
-    events: (s.events || []).map((e: any) => ({
+    events: (s.events ?? []).map((e: any) => ({
       id: e.id,
       status: e.status,
-      timestamp: e.timestamp.toISOString().replace("T", " ").slice(0, 16),
-      location: e.location || "",
-      description: e.description || "",
-      user: e.user || "",
-      proofUrl: e.proofUrl || "",
-      proofName: e.proofName || "",
-      proofMimeType: e.proofMimeType || "",
+      timestamp: e.timestamp.toISOString(),
+      location: e.location ?? "",
+      description: e.description ?? "",
+      user: e.user ?? "",
+      proofUrl: e.proofUrl ?? "",
+      proofName: e.proofName ?? "",
+      proofMimeType: e.proofMimeType ?? "",
       proofFileSize: e.proofFileSize ?? null,
     })),
 
-    invoices: (invoices || []).map((inv: any) => ({
+    invoices: invoices.map((inv) => ({
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
       status: inv.status,
-      amount: Number(inv.amount || 0),
-      currency: inv.currency || (currency as any)?.currencyCode || s.customer?.currency || "INR",
+      amount: Number(inv.amount ?? 0),
+      currency: inv.currency ?? currency?.currencyCode ?? "INR",
       issueDate: inv.issueDate ? inv.issueDate.toISOString().slice(0, 10) : "",
       dueDate: inv.dueDate ? inv.dueDate.toISOString().slice(0, 10) : "",
     })),
 
-    payments: (payments || []).map((p: any) => ({
+    payments: payments.map((p) => ({
       id: p.id,
-      amount: Number(p.amount || 0),
-      currency: p.currency || (currency as any)?.currencyCode || s.customer?.currency || "INR",
+      amount: Number(p.amount ?? 0),
+      currency: p.currency ?? currency?.currencyCode ?? "INR",
       date: p.date ? p.date.toISOString().slice(0, 10) : "",
-      method: p.method || "",
-      transactionNum: p.transactionNum || "",
-      status: p.status || "PENDING",
-      notes: p.notes || "",
+      method: p.method ?? "",
+      transactionNum: p.transactionNum ?? "",
+      status: p.status ?? "PENDING",
+      notes: p.notes ?? "",
     })),
 
     financials: {
-      currency: (currency as any)?.currencyCode || s.customer?.currency || "INR",
-      revenue: s.revenue ?? 0,
-      cost: s.cost ?? 0,
-      margin: s.margin ?? (Number(s.revenue ?? 0) - Number(s.cost ?? 0)),
-      invoiceStatus: s.invoiceStatus || "DRAFT",
+      currency: currency?.currencyCode ?? s.customer?.currency ?? "INR",
+      revenue: Number(s.revenue ?? 0),
+      cost: Number(s.cost ?? 0),
+      margin: Number(s.margin ?? (s.revenue - s.cost)),
+      invoiceStatus: s.invoiceStatus ?? "DRAFT",
     },
   };
+
+
 }
 
 export async function GET(_: Request, ctx: RouteCtx) {

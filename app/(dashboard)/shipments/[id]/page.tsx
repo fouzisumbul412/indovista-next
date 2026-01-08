@@ -72,21 +72,30 @@ const OverviewTab = ({ shipment }: { shipment: Shipment }) => (
         <div className="hidden md:block absolute top-1/2 left-20 right-20 h-0.5 bg-gray-200 -z-10" />
         <div className="text-center bg-white p-2">
           <div className="text-sm text-gray-500 mb-1">Origin</div>
-          <div className="text-xl font-bold text-gray-900">{shipment.origin.code}</div>
+          <div className="text-xl font-bold text-gray-900">
+            {shipment.origin.code}
+          </div>
           <div className="text-sm text-gray-600">
             {shipment.origin.city}, {shipment.origin.country}
           </div>
         </div>
         <div className="flex flex-col items-center bg-white p-2">
           <div className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold mb-2 inline-flex items-center gap-2">
-            {modeIcon(shipment.mode)} {shipment.mode} • {shipment.masterDoc || "No BL / Master"}
+            {modeIcon(shipment.mode)} {shipment.mode} •{" "}
+            {shipment.masterDoc || "No BL / Master"}
           </div>
-          <div className="text-xs text-gray-500">ETD: {formatIST(shipment.etd)}</div>
-          <div className="text-xs text-gray-500">ETA: {formatIST(shipment.eta)}</div>
+          <div className="text-xs text-gray-500">
+            ETD: {formatIST(shipment.etd)}
+          </div>
+          <div className="text-xs text-gray-500">
+            ETA: {formatIST(shipment.eta)}
+          </div>
         </div>
         <div className="text-center bg-white p-2">
           <div className="text-sm text-gray-500 mb-1">Destination</div>
-          <div className="text-xl font-bold text-gray-900">{shipment.destination.code}</div>
+          <div className="text-xl font-bold text-gray-900">
+            {shipment.destination.code}
+          </div>
           <div className="text-sm text-gray-600">
             {shipment.destination.city}, {shipment.destination.country}
           </div>
@@ -95,47 +104,63 @@ const OverviewTab = ({ shipment }: { shipment: Shipment }) => (
     </Card>
 
     <Card>
-      <h3 className="font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">Shipment Specs</h3>
+      <h3 className="font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">
+        Shipment Specs
+      </h3>
       <div className="space-y-4">
         <div className="flex justify-between gap-3">
           <span className="text-sm text-gray-500">Commodity Type</span>
-          <span className="text-sm font-medium text-right">{shipment.commodity}</span>
+          <span className="text-sm font-medium text-right">
+            {shipment.commodity}
+          </span>
         </div>
 
         <div className="flex justify-between gap-3">
           <span className="text-sm text-gray-500">Temperature Req</span>
           <span className="text-sm font-medium flex items-center gap-1 text-blue-600">
             <Thermometer className="w-4 h-4" />
-            {shipment.temperature?.range?.trim() ? shipment.temperature.range : "Ambient / N/A"}
+            {shipment.temperature?.range?.trim()
+              ? shipment.temperature.range
+              : "Ambient / N/A"}
           </span>
         </div>
 
         <div className="flex justify-between gap-3">
           <span className="text-sm text-gray-500">Incoterms</span>
           <span className="text-sm font-medium text-right">
-            {shipment.incoterm?.code ? `${shipment.incoterm.code} (${shipment.incoterm.name})` : "N/A"}
+            {shipment.incoterm?.code
+              ? `${shipment.incoterm.code} (${shipment.incoterm.name})`
+              : "N/A"}
           </span>
         </div>
 
         <div className="flex justify-between gap-3">
           <span className="text-sm text-gray-500">Container</span>
           <span className="text-sm font-medium text-right">
-            {shipment.containerType?.code ? `${shipment.containerType.code} - ${shipment.containerType.name}` : "N/A"}
+            {shipment.containerType?.code
+              ? `${shipment.containerType.code} - ${shipment.containerType.name}`
+              : "N/A"}
           </span>
         </div>
       </div>
     </Card>
 
     <Card>
-      <h3 className="font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">Customer Details</h3>
+      <h3 className="font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">
+        Customer Details
+      </h3>
       <div className="space-y-4">
         <div className="flex justify-between gap-3">
           <span className="text-sm text-gray-500">Consignee</span>
-          <span className="text-sm font-medium text-right">{shipment.customer}</span>
+          <span className="text-sm font-medium text-right">
+            {shipment.customer}
+          </span>
         </div>
         <div className="flex justify-between gap-3">
           <span className="text-sm text-gray-500">Reference</span>
-          <span className="text-sm font-medium text-right">{shipment.reference}</span>
+          <span className="text-sm font-medium text-right">
+            {shipment.reference}
+          </span>
         </div>
       </div>
     </Card>
@@ -178,9 +203,13 @@ export const TimelineTab = ({
       <div className="flex items-start justify-between gap-3 mb-6">
         <div>
           <h3 className="font-semibold text-gray-900">Status History</h3>
-          <p className="text-sm text-gray-500 mt-1">Add a new status with timestamp. It will update Shipment status + timeline.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Add a new status with timestamp. It will update Shipment status +
+            timeline.
+          </p>
           <div className="mt-2 text-xs text-gray-500">
-            <span className="font-semibold text-gray-700">Vehicle:</span> {vehicleLine}
+            <span className="font-semibold text-gray-700">Vehicle:</span>{" "}
+            {vehicleLine}
           </div>
         </div>
 
@@ -194,13 +223,18 @@ export const TimelineTab = ({
       </div>
 
       <div className="relative border-l-2 border-gray-200 ml-3 space-y-8 pb-4">
-        {sortedEvents.length === 0 && <div className="pl-6 text-gray-500">No events recorded yet.</div>}
+        {sortedEvents.length === 0 && (
+          <div className="pl-6 text-gray-500">No events recorded yet.</div>
+        )}
 
         {sortedEvents.map((event) => {
           const safeStatus = prettyStatus(event.status);
           const safeDesc =
-            event.description?.trim() || `Status updated to "${safeStatus}". Add notes next time for clarity.`;
-          const safeLoc = event.location?.trim() || `${shipment.origin.code} → ${shipment.destination.code}`;
+            event.description?.trim() ||
+            `Status updated to "${safeStatus}". Add notes next time for clarity.`;
+          const safeLoc =
+            event.location?.trim() ||
+            `${shipment.origin.code} → ${shipment.destination.code}`;
           const safeUser = event.user?.trim() || "System / Operator";
           const proofUrl = event.proofUrl?.trim() || "";
           const proofName = event.proofName?.trim() || "Proof";
@@ -208,9 +242,11 @@ export const TimelineTab = ({
 
           const isImage = proofMime.startsWith("image/");
           const isVideo = proofMime.startsWith("video/");
-          const isPdf = proofMime === "application/pdf" || proofUrl.toLowerCase().endsWith(".pdf");
+          const isPdf =
+            proofMime === "application/pdf" ||
+            proofUrl.toLowerCase().endsWith(".pdf");
 
-                  return (
+          return (
             <div key={event.id} className="relative pl-8">
               <div
                 className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 border-white ${
@@ -219,13 +255,19 @@ export const TimelineTab = ({
               />
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
                 <div className="min-w-0">
-                  <span className="text-sm font-bold text-gray-900 block">{safeStatus}</span>
-                  <span className="text-sm text-gray-600 block break-words">{safeDesc}</span>
+                  <span className="text-sm font-bold text-gray-900 block">
+                    {safeStatus}
+                  </span>
+                  <span className="text-sm text-gray-600 block break-words">
+                    {safeDesc}
+                  </span>
 
                   {/* ✅ Proof preview/link */}
                   {proofUrl ? (
                     <div className="mt-3">
-                      <div className="text-xs font-semibold text-gray-700 mb-1">Proof</div>
+                      <div className="text-xs font-semibold text-gray-700 mb-1">
+                        Proof
+                      </div>
 
                       {isImage ? (
                         <a href={proofUrl} target="_blank" rel="noreferrer">
@@ -240,7 +282,10 @@ export const TimelineTab = ({
                           controls
                           className="w-full max-w-md rounded-lg border border-gray-200"
                         >
-                          <source src={proofUrl} type={proofMime || "video/mp4"} />
+                          <source
+                            src={proofUrl}
+                            type={proofMime || "video/mp4"}
+                          />
                         </video>
                       ) : (
                         <a
@@ -257,13 +302,19 @@ export const TimelineTab = ({
                   ) : null}
 
                   <div className="mt-2 text-xs text-gray-500">
-                    <span className="font-semibold text-gray-700">Vehicle:</span>{" "}
-                    {shipment.vehicle ? `${shipment.vehicle.name} (${shipment.vehicle.number})` : "Unassigned"}
+                    <span className="font-semibold text-gray-700">
+                      Vehicle:
+                    </span>{" "}
+                    {shipment.vehicle
+                      ? `${shipment.vehicle.name} (${shipment.vehicle.number})`
+                      : "Unassigned"}
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <div className="text-xs text-gray-500">{formatIST(event.timestamp)}</div>
+                  <div className="text-xs text-gray-500">
+                    {formatIST(event.timestamp)}
+                  </div>
                   <div className="text-xs text-gray-400 font-medium">
                     {safeLoc} • {safeUser}
                   </div>
@@ -292,7 +343,9 @@ const DocumentsTab = ({
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
       <div>
         <h3 className="font-semibold text-gray-900">Required Documentation</h3>
-        <p className="text-sm text-gray-500 mt-1">Upload, edit metadata, or delete documents.</p>
+        <p className="text-sm text-gray-500 mt-1">
+          Upload, edit metadata, or delete documents.
+        </p>
       </div>
       <button
         onClick={onUploadClick}
@@ -304,7 +357,11 @@ const DocumentsTab = ({
     </div>
 
     <div className="space-y-4">
-      {documents.length === 0 && <div className="text-gray-500 italic">No documents required or uploaded.</div>}
+      {documents.length === 0 && (
+        <div className="text-gray-500 italic">
+          No documents required or uploaded.
+        </div>
+      )}
 
       {documents.map((doc) => (
         <div
@@ -316,12 +373,22 @@ const DocumentsTab = ({
               <FileText className="w-5 h-5 text-gray-500" />
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-medium text-gray-900 truncate">{doc.name}</div>
+              <div className="text-sm font-medium text-gray-900 truncate">
+                {doc.name}
+              </div>
               <div className="text-xs text-gray-500">
-                {doc.type} • {doc.uploadDate ? `Uploaded: ${formatIST(doc.uploadDate)}` : "Not uploaded"}
+                {doc.type} •{" "}
+                {doc.uploadDate
+                  ? `Uploaded: ${formatIST(doc.uploadDate)}`
+                  : "Not uploaded"}
               </div>
               {doc.fileUrl && (
-                <a className="text-xs text-blue-600 hover:underline" href={doc.fileUrl} target="_blank" rel="noreferrer">
+                <a
+                  className="text-xs text-blue-600 hover:underline"
+                  href={doc.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   View file
                 </a>
               )}
@@ -349,12 +416,20 @@ const DocumentsTab = ({
   </Card>
 );
 
-const CargoTab = ({ shipment, onEditClick }: { shipment: Shipment; onEditClick: () => void }) => (
+const CargoTab = ({
+  shipment,
+  onEditClick,
+}: {
+  shipment: Shipment;
+  onEditClick: () => void;
+}) => (
   <Card noPadding>
     <div className="p-4 border-b border-gray-100 flex items-start justify-between gap-3">
       <div>
         <h3 className="font-semibold text-gray-900">Cargo & Pack</h3>
-        <p className="text-sm text-gray-500 mt-1">Add / edit products, qty, weight, packaging.</p>
+        <p className="text-sm text-gray-500 mt-1">
+          Add / edit products, qty, weight, packaging.
+        </p>
       </div>
       <button
         onClick={onEditClick}
@@ -380,8 +455,12 @@ const CargoTab = ({ shipment, onEditClick }: { shipment: Shipment; onEditClick: 
         <tbody className="divide-y divide-gray-100">
           {shipment.cargo.map((item) => (
             <tr key={item.id}>
-              <td className="px-6 py-4 font-medium text-gray-900">{item.productName}</td>
-              <td className="px-6 py-4 text-gray-600 font-mono">{item.hsCode}</td>
+              <td className="px-6 py-4 font-medium text-gray-900">
+                {item.productName}
+              </td>
+              <td className="px-6 py-4 text-gray-600 font-mono">
+                {item.hsCode}
+              </td>
               <td className="px-6 py-4">
                 {item.quantity} {item.unit}
               </td>
@@ -391,7 +470,9 @@ const CargoTab = ({ shipment, onEditClick }: { shipment: Shipment; onEditClick: 
                   {item.tempReq || "Ambient"}
                 </span>
               </td>
-              <td className="px-6 py-4">{item.packaging || "Notes not added"}</td>
+              <td className="px-6 py-4">
+                {item.packaging || "Notes not added"}
+              </td>
             </tr>
           ))}
           {shipment.cargo.length === 0 && (
@@ -406,11 +487,15 @@ const CargoTab = ({ shipment, onEditClick }: { shipment: Shipment; onEditClick: 
     </div>
 
     <div className="md:hidden p-4 space-y-3">
-      {shipment.cargo.length === 0 && <div className="text-gray-500">No cargo items found.</div>}
+      {shipment.cargo.length === 0 && (
+        <div className="text-gray-500">No cargo items found.</div>
+      )}
       {shipment.cargo.map((item) => (
         <Card key={item.id} className="border border-gray-200">
           <div className="font-bold text-gray-900">{item.productName}</div>
-          <div className="text-xs text-gray-500 mt-1">HS: {item.hsCode || "-"}</div>
+          <div className="text-xs text-gray-500 mt-1">
+            HS: {item.hsCode || "-"}
+          </div>
           <div className="mt-3 text-sm space-y-2">
             <div className="flex justify-between">
               <span className="text-gray-500">Qty</span>
@@ -428,7 +513,9 @@ const CargoTab = ({ shipment, onEditClick }: { shipment: Shipment; onEditClick: 
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Packaging</span>
-              <span className="font-semibold text-right">{item.packaging || "Notes not added"}</span>
+              <span className="font-semibold text-right">
+                {item.packaging || "Notes not added"}
+              </span>
             </div>
           </div>
         </Card>
@@ -437,7 +524,13 @@ const CargoTab = ({ shipment, onEditClick }: { shipment: Shipment; onEditClick: 
   </Card>
 );
 
-const VehicleDriverModeTab = ({ shipment, onEditClick }: { shipment: Shipment; onEditClick: () => void }) => {
+const VehicleDriverModeTab = ({
+  shipment,
+  onEditClick,
+}: {
+  shipment: Shipment;
+  onEditClick: () => void;
+}) => {
   const vehicle = shipment.vehicle;
   const shipmentDriver = (shipment as any).driver || null;
 
@@ -446,9 +539,12 @@ const VehicleDriverModeTab = ({ shipment, onEditClick }: { shipment: Shipment; o
       <Card className="lg:col-span-3">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-gray-900">Vehicle • Driver • Mode</h3>
+            <h3 className="font-semibold text-gray-900">
+              Vehicle • Driver • Mode
+            </h3>
             <p className="text-sm text-gray-500 mt-1">
-              Assign a vehicle/driver that matches the shipment mode. (Validation is enforced in the API.)
+              Assign a vehicle/driver that matches the shipment mode.
+              (Validation is enforced in the API.)
             </p>
           </div>
           <button
@@ -477,24 +573,32 @@ const VehicleDriverModeTab = ({ shipment, onEditClick }: { shipment: Shipment; o
 
           <div className="p-4 bg-gray-50 rounded border border-gray-200">
             <div className="text-xs text-gray-500">Shipment ID</div>
-            <div className="mt-1 font-mono font-bold text-gray-900 break-all">{shipment.id}</div>
+            <div className="mt-1 font-mono font-bold text-gray-900 break-all">
+              {shipment.id}
+            </div>
           </div>
         </div>
       </Card>
 
       <Card className="lg:col-span-2">
-        <h3 className="font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">Assigned Vehicle</h3>
+        <h3 className="font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">
+          Assigned Vehicle
+        </h3>
         {!vehicle ? (
           <div className="text-sm text-gray-500">
             Vehicle is <span className="font-semibold">Unassigned</span>. Click{" "}
-            <span className="font-semibold">Assign / Change</span> to select a vehicle that matches mode ({shipment.mode}).
+            <span className="font-semibold">Assign / Change</span> to select a
+            vehicle that matches mode ({shipment.mode}).
           </div>
         ) : (
           <div className="space-y-4">
             <div>
               <div className="text-xs text-gray-500">Vehicle</div>
               <div className="text-lg font-bold text-gray-900">
-                {vehicle.name} <span className="text-gray-500 font-semibold">({vehicle.number})</span>
+                {vehicle.name}{" "}
+                <span className="text-gray-500 font-semibold">
+                  ({vehicle.number})
+                </span>
               </div>
               <div className="text-xs text-gray-500 mt-1 inline-flex items-center gap-2">
                 {modeIcon(vehicle.transportMode)} {vehicle.transportMode}
@@ -502,27 +606,43 @@ const VehicleDriverModeTab = ({ shipment, onEditClick }: { shipment: Shipment; o
             </div>
 
             <div>
-              <div className="text-xs text-gray-500 mb-2">Drivers on Vehicle</div>
+              <div className="text-xs text-gray-500 mb-2">
+                Drivers on Vehicle
+              </div>
               {vehicle.assignedDrivers?.length ? (
                 <div className="space-y-2">
                   {vehicle.assignedDrivers.map((d: any) => (
-                    <div key={d.id} className="flex items-center justify-between gap-3 p-2 bg-gray-50 rounded border border-gray-200">
+                    <div
+                      key={d.id}
+                      className="flex items-center justify-between gap-3 p-2 bg-gray-50 rounded border border-gray-200"
+                    >
                       <div className="min-w-0">
-                        <div className="font-semibold text-gray-900 truncate">{d.name}</div>
-                        <div className="text-xs text-gray-500 truncate">{d.role || "Driver"}</div>
+                        <div className="font-semibold text-gray-900 truncate">
+                          {d.name}
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {d.role || "Driver"}
+                        </div>
                       </div>
                       {d.contactNumber ? (
-                        <a href={`tel:${d.contactNumber}`} className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600">
+                        <a
+                          href={`tel:${d.contactNumber}`}
+                          className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600"
+                        >
                           <Phone className="w-4 h-4" /> {d.contactNumber}
                         </a>
                       ) : (
-                        <span className="text-xs text-gray-400">No contact</span>
+                        <span className="text-xs text-gray-400">
+                          No contact
+                        </span>
                       )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-gray-500">No driver assigned to this vehicle yet.</div>
+                <div className="text-sm text-gray-500">
+                  No driver assigned to this vehicle yet.
+                </div>
               )}
             </div>
           </div>
@@ -530,22 +650,31 @@ const VehicleDriverModeTab = ({ shipment, onEditClick }: { shipment: Shipment; o
       </Card>
 
       <Card>
-        <h3 className="font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">Shipment Driver</h3>
+        <h3 className="font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">
+          Shipment Driver
+        </h3>
         {!shipmentDriver ? (
           <div className="text-sm text-gray-500">
-            Shipment driver is <span className="font-semibold">Not assigned</span>. (Optional)
+            Shipment driver is{" "}
+            <span className="font-semibold">Not assigned</span>. (Optional)
           </div>
         ) : (
           <div className="space-y-3">
             <div>
               <div className="text-xs text-gray-500">Driver</div>
-              <div className="text-lg font-bold text-gray-900">{shipmentDriver.name}</div>
+              <div className="text-lg font-bold text-gray-900">
+                {shipmentDriver.name}
+              </div>
               <div className="text-xs text-gray-500 mt-1">
-                {shipmentDriver.role || "Driver"} • {shipmentDriver.transportMode}
+                {shipmentDriver.role || "Driver"} •{" "}
+                {shipmentDriver.transportMode}
               </div>
             </div>
             {shipmentDriver.contactNumber ? (
-              <a href={`tel:${shipmentDriver.contactNumber}`} className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600">
+              <a
+                href={`tel:${shipmentDriver.contactNumber}`}
+                className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600"
+              >
                 <Phone className="w-4 h-4" /> {shipmentDriver.contactNumber}
               </a>
             ) : (
@@ -553,7 +682,8 @@ const VehicleDriverModeTab = ({ shipment, onEditClick }: { shipment: Shipment; o
             )}
             {shipmentDriver.licenseNumber ? (
               <div className="text-xs text-gray-500">
-                <span className="font-semibold text-gray-700">License:</span> {shipmentDriver.licenseNumber}
+                <span className="font-semibold text-gray-700">License:</span>{" "}
+                {shipmentDriver.licenseNumber}
               </div>
             ) : null}
           </div>
@@ -583,7 +713,12 @@ export default function ShipmentDetail() {
 
   const [selectedDoc, setSelectedDoc] = useState<ShipmentDocument | null>(null);
 
-  const { data: shipment, isLoading, isError, error } = useQuery<Shipment>({
+  const {
+    data: shipment,
+    isLoading,
+    isError,
+    error,
+  } = useQuery<Shipment>({
     queryKey: ["shipment", id],
     queryFn: async () => {
       const res = await fetch(`/api/shipments/${id}`, { cache: "no-store" });
@@ -613,10 +748,14 @@ export default function ShipmentDetail() {
 
   const handleDeleteShipment = async () => {
     if (!shipment?.id) return;
-    const ok = confirm(`Delete shipment ${shipment.reference}? This will remove items, docs, and events.`);
+    const ok = confirm(
+      `Delete shipment ${shipment.reference}? This will remove items, docs, and events.`
+    );
     if (!ok) return;
 
-    const res = await fetch(`/api/shipments/${shipment.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/shipments/${shipment.id}`, {
+      method: "DELETE",
+    });
     if (!res.ok) {
       alert(await res.text());
       return;
@@ -630,7 +769,10 @@ export default function ShipmentDetail() {
     const ok = confirm(`Delete document "${doc.name}"?`);
     if (!ok) return;
 
-    const res = await fetch(`/api/shipments/${shipment.id}/documents/${doc.id}`, { method: "DELETE" });
+    const res = await fetch(
+      `/api/shipments/${shipment.id}/documents/${doc.id}`,
+      { method: "DELETE" }
+    );
     if (!res.ok) {
       alert(await res.text());
       return;
@@ -638,24 +780,40 @@ export default function ShipmentDetail() {
     await refetchShipment();
   };
 
-  if (isLoading) return <div className="p-8 text-center text-gray-500">Loading...</div>;
+  if (isLoading)
+    return <div className="p-8 text-center text-gray-500">Loading...</div>;
 
   if (isError || !shipment) {
     return (
       <div className="p-8 text-center text-gray-500 space-y-2">
         <div>Shipment not found</div>
-        <div className="text-xs text-gray-400 break-words max-w-2xl mx-auto">{(error as any)?.message || ""}</div>
+        <div className="text-xs text-gray-400 break-words max-w-2xl mx-auto">
+          {(error as any)?.message || ""}
+        </div>
       </div>
     );
   }
 
-  const invoices = Array.isArray((shipment as any).invoices) ? (shipment as any).invoices : [];
-  const payments = Array.isArray((shipment as any).payments) ? (shipment as any).payments : [];
+  const invoices = Array.isArray((shipment as any).invoices)
+    ? (shipment as any).invoices
+    : [];
+  const payments = Array.isArray((shipment as any).payments)
+    ? (shipment as any).payments
+    : [];
 
-  const currency = shipment.financials?.currency || invoices[0]?.currency || "INR";
+  const currency =
+    shipment.financials?.currency ?? shipment.invoices?.[0]?.currency ?? "INR";
 
-  const totalBilled = invoices.reduce((sum: number, inv: any) => sum + (inv.status !== "DRAFT" ? Number(inv.amount || 0) : 0), 0);
-  const totalPaid = payments.reduce((sum: number, p: any) => sum + (p.status === "COMPLETED" ? Number(p.amount || 0) : 0), 0);
+  const totalBilled = invoices.reduce(
+    (sum: number, inv: any) =>
+      sum + (inv.status !== "DRAFT" ? Number(inv.amount || 0) : 0),
+    0
+  );
+  const totalPaid = payments.reduce(
+    (sum: number, p: any) =>
+      sum + (p.status === "COMPLETED" ? Number(p.amount || 0) : 0),
+    0
+  );
   const outstanding = totalBilled - totalPaid;
 
   return (
@@ -663,12 +821,17 @@ export default function ShipmentDetail() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="min-w-0">
-          <Link href="/shipments" className="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 mb-2">
+          <Link
+            href="/shipments"
+            className="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 mb-2"
+          >
             <ArrowLeft className="w-4 h-4 mr-1" /> Back to Shipments
           </Link>
 
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-900 break-words">{shipment.reference}</h1>
+            <h1 className="text-2xl font-bold text-gray-900 break-words">
+              {shipment.reference}
+            </h1>
             <StatusBadge status={shipment.status as any} />
             <span className="text-xs font-mono px-2 py-1 rounded bg-gray-100 text-gray-600 border border-gray-200">
               {shipment.id}
@@ -677,19 +840,25 @@ export default function ShipmentDetail() {
 
           <div className="text-sm text-gray-500 mt-1 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
             <span className="flex items-center">
-              <MapPin className="w-3 h-3 mr-1" /> {shipment.origin.code} to {shipment.destination.code}
+              <MapPin className="w-3 h-3 mr-1" /> {shipment.origin.code} to{" "}
+              {shipment.destination.code}
             </span>
             <span className="flex items-center">
-              <Calendar className="w-3 h-3 mr-1" /> ETA: {formatIST(shipment.eta)}
+              <Calendar className="w-3 h-3 mr-1" /> ETA:{" "}
+              {formatIST(shipment.eta)}
             </span>
           </div>
 
           <div className="text-xs text-gray-500 mt-2">
             <span className="font-semibold text-gray-700">Vehicle:</span>{" "}
-            {shipment.vehicle ? `${shipment.vehicle.name} (${shipment.vehicle.number})` : "Unassigned"}{" "}
+            {shipment.vehicle
+              ? `${shipment.vehicle.name} (${shipment.vehicle.number})`
+              : "Unassigned"}{" "}
             <span className="text-gray-400">•</span>{" "}
             <span className="font-semibold text-gray-700">Driver(s):</span>{" "}
-            {shipment.vehicle?.assignedDrivers?.length ? shipment.vehicle.assignedDrivers.map((d) => d.name).join(", ") : "Not assigned"}
+            {shipment.vehicle?.assignedDrivers?.length
+              ? shipment.vehicle.assignedDrivers.map((d) => d.name).join(", ")
+              : "Not assigned"}
           </div>
         </div>
 
@@ -737,10 +906,19 @@ export default function ShipmentDetail() {
         {activeTab === "overview" && <OverviewTab shipment={shipment} />}
 
         {activeTab === "timeline" && (
-          <TimelineTab shipment={shipment} events={shipment.events || []} onUpdateClick={() => setStatusOpen(true)} />
+          <TimelineTab
+            shipment={shipment}
+            events={shipment.events || []}
+            onUpdateClick={() => setStatusOpen(true)}
+          />
         )}
 
-        {activeTab === "vehicle_driver" && <VehicleDriverModeTab shipment={shipment} onEditClick={() => setAssignOpen(true)} />}
+        {activeTab === "vehicle_driver" && (
+          <VehicleDriverModeTab
+            shipment={shipment}
+            onEditClick={() => setAssignOpen(true)}
+          />
+        )}
 
         {activeTab === "documents" && (
           <DocumentsTab
@@ -754,132 +932,178 @@ export default function ShipmentDetail() {
           />
         )}
 
-        {activeTab === "cargo" && <CargoTab shipment={shipment} onEditClick={() => setCargoOpen(true)} />}
+        {activeTab === "cargo" && (
+          <CargoTab
+            shipment={shipment}
+            onEditClick={() => setCargoOpen(true)}
+          />
+        )}
 
-      {activeTab === "billing" && (
-  <Card>
-    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
-      <div>
-        <h3 className="font-semibold text-gray-900">Financials</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          Keep shipment financials + manage invoices & payments below.
-        </p>
-      </div>
+        {activeTab === "billing" && (
+          <Card>
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
+              <div>
+                <h3 className="font-semibold text-gray-900">Financials</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Keep shipment financials + manage invoices & payments below.
+                </p>
+              </div>
 
-      <div className="flex flex-wrap gap-2">
-        <CreateQuoteButton shipmentId={shipment.id} />
-        <CreateInvoiceButton shipmentId={shipment.id} />
-        <button
-          onClick={() => setFinancialOpen(true)}
-          className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 inline-flex items-center gap-2"
-        >
-          <Pencil className="w-4 h-4" />
-          Edit Financials
-        </button>
-      </div>
-    </div>
+              <div className="flex flex-wrap gap-2">
+                <CreateQuoteButton shipmentId={shipment.id} />
+                <CreateInvoiceButton shipmentId={shipment.id} />
+                <button
+                  onClick={() => setFinancialOpen(true)}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 inline-flex items-center gap-2"
+                >
+                  <Pencil className="w-4 h-4" />
+                  Edit Financials
+                </button>
+              </div>
+            </div>
 
-    {/* ✅ KEEP THIS SAME (Revenue / Cost / Margin) */}
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
-      <div className="p-4 bg-gray-50 rounded">
-        <div className="text-sm text-gray-500">Revenue</div>
-        <div className="text-2xl font-bold text-gray-900">
-          {formatCurrency(Number(shipment.financials?.revenue || 0), currency)}
-        </div>
-      </div>
-      <div className="p-4 bg-gray-50 rounded">
-        <div className="text-sm text-gray-500">Cost</div>
-        <div className="text-2xl font-bold text-gray-900">
-          {formatCurrency(Number(shipment.financials?.cost || 0), currency)}
-        </div>
-      </div>
-      <div className="p-4 bg-green-50 rounded border border-green-100">
-        <div className="text-sm text-green-700">Margin</div>
-        <div className="text-2xl font-bold text-green-800">
-          {formatCurrency(Number(shipment.financials?.margin || 0), currency)}
-        </div>
-        <div className="text-xs text-green-700 mt-2">
-          Invoice: {shipment.financials?.invoiceStatus || "DRAFT"}
-        </div>
-      </div>
-    </div>
-
-    {/* ✅ Billing Summary */}
-    <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
-      <div className="p-4 bg-gray-50 rounded">
-        <div className="text-sm text-gray-500">Total Billed</div>
-        <div className="text-xl font-bold text-gray-900">{formatCurrency(totalBilled, currency)}</div>
-      </div>
-      <div className="p-4 bg-gray-50 rounded">
-        <div className="text-sm text-gray-500">Total Paid</div>
-        <div className="text-xl font-bold text-gray-900">{formatCurrency(totalPaid, currency)}</div>
-      </div>
-      <div className="p-4 bg-yellow-50 rounded border border-yellow-100">
-        <div className="text-sm text-yellow-700">Outstanding</div>
-        <div className="text-xl font-bold text-yellow-800">{formatCurrency(outstanding, currency)}</div>
-      </div>
-    </div>
-
-    {/* ✅ Invoice List */}
-    <div className="mt-6">
-      <h3 className="font-semibold text-gray-900 mb-3">Invoices</h3>
-      {invoices.length === 0 ? (
-        <div className="text-gray-500">No invoices created yet.</div>
-      ) : (
-        <div className="space-y-3">
-          {invoices.map((inv: any) => (
-            <div key={inv.id} className="p-4 bg-gray-50 rounded border border-gray-200">
-              <div className="flex justify-between gap-3">
-                <div className="font-semibold text-gray-900">
-                  {inv.invoiceNumber} <span className="text-xs text-gray-500">({inv.status})</span>
+            {/* ✅ KEEP THIS SAME (Revenue / Cost / Margin) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
+              <div className="p-4 bg-gray-50 rounded">
+                <div className="text-sm text-gray-500">Revenue</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(
+                    Number(shipment.financials?.revenue || 0),
+                    currency
+                  )}
                 </div>
-                <div className="font-bold">{formatCurrency(Number(inv.amount || 0), inv.currency || currency)}</div>
               </div>
-              <div className="text-xs text-gray-500 mt-1">
-                Issue: {inv.issueDate || "-"} • Due: {inv.dueDate || "-"}
+              <div className="p-4 bg-gray-50 rounded">
+                <div className="text-sm text-gray-500">Cost</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(
+                    Number(shipment.financials?.cost || 0),
+                    currency
+                  )}
+                </div>
+              </div>
+              <div className="p-4 bg-green-50 rounded border border-green-100">
+                <div className="text-sm text-green-700">Margin</div>
+                <div className="text-2xl font-bold text-green-800">
+                  {formatCurrency(
+                    Number(shipment.financials?.margin || 0),
+                    currency
+                  )}
+                </div>
+                <div className="text-xs text-green-700 mt-2">
+                  Invoice: {shipment.financials?.invoiceStatus || "DRAFT"}
+                </div>
               </div>
             </div>
-          ))}
-        </div>
-      )}
-    </div>
 
-    {/* ✅ Payments */}
-    <div className="mt-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900">Payment History</h3>
-        <button
-          onClick={() => setAddPaymentOpen(true)}
-          className="px-3 py-2 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700 flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Add Payment
-        </button>
-      </div>
-
-      {payments.length === 0 ? (
-        <div className="text-gray-500">No payments recorded.</div>
-      ) : (
-        <div className="space-y-3">
-          {payments.map((p: any) => (
-            <div key={p.id} className="p-4 bg-gray-50 rounded border border-gray-200">
-              <div className="flex justify-between gap-3">
-                <span className="font-bold">{formatCurrency(Number(p.amount || 0), p.currency || currency)}</span>
-                <span className="text-xs">{p.date ? formatIST(p.date) : "-"}</span>
+            {/* ✅ Billing Summary */}
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
+              <div className="p-4 bg-gray-50 rounded">
+                <div className="text-sm text-gray-500">Total Billed</div>
+                <div className="text-xl font-bold text-gray-900">
+                  {formatCurrency(totalBilled, currency)}
+                </div>
               </div>
-              <div className="text-xs text-gray-500 mt-1">
-                Method: {p.method || "-"} • Tx: {p.transactionNum || "-"} • Status: {p.status}
-                {p.invoiceId ? " • Applied: Yes" : " • Applied: No"}
+              <div className="p-4 bg-gray-50 rounded">
+                <div className="text-sm text-gray-500">Total Paid</div>
+                <div className="text-xl font-bold text-gray-900">
+                  {formatCurrency(totalPaid, currency)}
+                </div>
               </div>
-              {p.notes && <div className="text-xs text-gray-600 mt-1">{p.notes}</div>}
+              <div className="p-4 bg-yellow-50 rounded border border-yellow-100">
+                <div className="text-sm text-yellow-700">Outstanding</div>
+                <div className="text-xl font-bold text-yellow-800">
+                  {formatCurrency(outstanding, currency)}
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  </Card>
-)}
 
+            {/* ✅ Invoice List */}
+            <div className="mt-6">
+              <h3 className="font-semibold text-gray-900 mb-3">Invoices</h3>
+              {invoices.length === 0 ? (
+                <div className="text-gray-500">No invoices created yet.</div>
+              ) : (
+                <div className="space-y-3">
+                  {invoices.map((inv: any) => (
+                    <div
+                      key={inv.id}
+                      className="p-4 bg-gray-50 rounded border border-gray-200"
+                    >
+                      <div className="flex justify-between gap-3">
+                        <div className="font-semibold text-gray-900">
+                          {inv.invoiceNumber}{" "}
+                          <span className="text-xs text-gray-500">
+                            ({inv.status})
+                          </span>
+                        </div>
+                        <div className="font-bold">
+                          {formatCurrency(
+                            Number(inv.amount || 0),
+                            inv.currency || currency
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Issue: {inv.issueDate || "-"} • Due:{" "}
+                        {inv.dueDate || "-"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ✅ Payments */}
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-900">Payment History</h3>
+                <button
+                  onClick={() => setAddPaymentOpen(true)}
+                  className="px-3 py-2 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700 flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Payment
+                </button>
+              </div>
+
+              {payments.length === 0 ? (
+                <div className="text-gray-500">No payments recorded.</div>
+              ) : (
+                <div className="space-y-3">
+                  {payments.map((p: any) => (
+                    <div
+                      key={p.id}
+                      className="p-4 bg-gray-50 rounded border border-gray-200"
+                    >
+                      <div className="flex justify-between gap-3">
+                        <span className="font-bold">
+                          {formatCurrency(
+                            Number(p.amount || 0),
+                            p.currency || currency
+                          )}
+                        </span>
+                        <span className="text-xs">
+                          {p.date ? formatIST(p.date) : "-"}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Method: {p.method || "-"} • Tx:{" "}
+                        {p.transactionNum || "-"} • Status: {p.status}
+                        {p.invoiceId ? " • Applied: Yes" : " • Applied: No"}
+                      </div>
+                      {p.notes && (
+                        <div className="text-xs text-gray-600 mt-1">
+                          {p.notes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
       </div>
 
       {/* Modals */}
@@ -969,14 +1193,14 @@ export default function ShipmentDetail() {
 
       <AddPaymentModal
         isOpen={addPaymentOpen}
-  onClose={() => setAddPaymentOpen(false)}
-  shipmentId={shipment.id}
-  currency={currency}
-  maxAmountHint={Math.max(outstanding, 0)}
-  onSaved={async () => {
-    setAddPaymentOpen(false);
-    await refetchShipment();
-  }}
+        onClose={() => setAddPaymentOpen(false)}
+        shipmentId={shipment.id}
+        currency={currency}
+        maxAmountHint={Math.max(outstanding, 0)}
+        onSaved={async () => {
+          setAddPaymentOpen(false);
+          await refetchShipment();
+        }}
       />
     </div>
   );

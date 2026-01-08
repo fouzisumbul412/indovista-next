@@ -24,9 +24,6 @@ function toJson(value: any) {
   return JSON.parse(JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
 }
 
-/* =========================
-   UPDATE DOCUMENT METADATA
-   ========================= */
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const actor = await getActorFromRequest(req);
@@ -94,9 +91,6 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   }
 }
 
-/* =========================
-   DELETE DOCUMENT (BLOB SAFE)
-   ========================= */
 export async function DELETE(req: NextRequest, ctx: Ctx) {
   try {
     const actor = await getActorFromRequest(req);
