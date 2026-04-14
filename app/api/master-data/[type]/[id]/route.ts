@@ -6,7 +6,8 @@ import {
   AuditAction,
   AuditEntityType,
 } from "@/lib/generated/prisma/enums";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/lib/generated/prisma/client";
+// import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
